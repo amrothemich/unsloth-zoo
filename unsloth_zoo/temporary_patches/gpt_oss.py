@@ -894,16 +894,12 @@ def patch_GptOssAttention():
         #         has_static_cache = has_static_cache,
         #     )
         # attn_weights = None
-        if self.training:
-            attn_output = flex_attention_with_sink(
-                self,
-                query_states,
-                key_states,
-                value_states,
-            )
-            attn_weights = None
-        else:
-            # Weirdly for inference, flex attention returns gibberish
+        # Use flex attention for training and eval forward passes (qlen > 1)
+        # Only use eager attention for decoding (qlen == 1)
+        _, _, qlen, _ = query_states.shape
+        if qlen == 1 and not self.training:
+            # Decoding path - use eager attention with prepared masks
+            # Weirdly for decoding, flex attention returns gibberish
             # Most likely due to left padding
             attn_output, attn_weights = eager_attention_forward(
                 self,
@@ -917,6 +913,15 @@ def patch_GptOssAttention():
                 s_aux=self.sinks,  # diff with Llama
                 **kwargs,
             )
+        else:
+            # Training or eval forward pass - use flex attention
+            attn_output = flex_attention_with_sink(
+                self,
+                query_states,
+                key_states,
+                value_states,
+            )
+            attn_weights = None
         attn_output = attn_output.reshape(*input_shape, -1).contiguous()
         attn_output = self.o_proj(attn_output)
         return attn_output, attn_weights
