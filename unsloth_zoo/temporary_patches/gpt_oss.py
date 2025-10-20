@@ -899,6 +899,9 @@ def patch_GptOssAttention():
         use_flex_attention = os.environ.get("UNSLOTH_ENABLE_FLEX_ATTENTION", "1") == "1"
 
         if self.training or use_flex_attention:
+            import sys
+            mode = "TRAINING" if self.training else "EVAL"
+            print(f"[UNSLOTH DEBUG] Using FLEX attention in {mode} mode (layer {self.layer_idx})", file=sys.stderr, flush=True)
             attn_output = flex_attention_with_sink(
                 self,
                 query_states,
@@ -907,6 +910,8 @@ def patch_GptOssAttention():
             )
             attn_weights = None
         else:
+            import sys
+            print(f"[UNSLOTH DEBUG] Using EAGER attention (layer {self.layer_idx})", file=sys.stderr, flush=True)
             # Weirdly for inference, flex attention returns gibberish
             # Most likely due to left padding
             attn_output, attn_weights = eager_attention_forward(
