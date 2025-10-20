@@ -1201,7 +1201,9 @@ def patch_GptOssModel():
             pass
 
         # It may already have been prepared by e.g. `generate`
-        if not self.training and not isinstance(attention_mask, dict):
+        # Only create eager masks for decoding (qlen == 1), not for eval forward passes
+        bsz_check, qlen_check, _ = hidden_states.shape
+        if not self.training and qlen_check == 1 and not isinstance(attention_mask, dict):
             mask_kwargs = {
                 "config": self.config,
                 "input_embeds": inputs_embeds,

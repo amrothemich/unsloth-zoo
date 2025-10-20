@@ -990,7 +990,6 @@ elif self.training:
         logit_scale_divide   = (\\3) if (\\3) != () else 0,
         logit_softcapping    = (\\4) if (\\4) != () else 0,
     )
-    print(f"[UNSLOTH DEBUG] Training path: loss={loss}")
 else:
     __DYNAMO__RECOMPILING__
     logits = self.lm_head(hidden_states\\1)
@@ -1004,7 +1003,6 @@ else:
         logits = logits * (\\4)
     if labels is not None:
         loss = self.loss_function(logits, labels)
-        print(f"[UNSLOTH DEBUG] Eval path: loss={loss}, logits.shape={logits.shape}, labels.shape={labels.shape}")
 """.replace("__DYNAMO__RECOMPILING__", __DYNAMO__RECOMPILING__)
 
 cross_entropy_find_2 = """
@@ -1083,7 +1081,6 @@ elif self.loss_function.__name__.endswith("ForCausalLMLoss") and labels is not N
         logit_scale_divide   = (\\3) if (\\3) != () else 0,
         logit_softcapping    = (\\4) if (\\4) != () else 0,
     )
-    print(f"[UNSLOTH DEBUG] Training path 2: loss={loss}")
 else:
     logits = self.lm_head(hidden_states\\1)
     if (\\2) != ():
@@ -1095,7 +1092,6 @@ else:
         logits = torch.tanh(logits)
         logits = logits * (\\4)
     loss = self.loss_function(\\6, \\7.to(self.lm_head.weight.device), vocab_size=\\8, **\\9)
-    print(f"[UNSLOTH DEBUG] Eval path 2: loss={loss}, logits.shape={logits.shape}")
 """.replace("__DYNAMO__RECOMPILING__", __DYNAMO__RECOMPILING__)
 
 cross_entropy_find_3 = """
@@ -1175,7 +1171,6 @@ elif self.training:
         logit_scale_divide   = (\\3) if (\\3) != () else 0,
         logit_softcapping    = (\\4) if (\\4) != () else 0,
     )
-    print(f"[UNSLOTH DEBUG] Training path 3: loss={loss}")
 else:
     __DYNAMO__RECOMPILING__
     logits = self.lm_head(hidden_states\\1)
@@ -1189,7 +1184,6 @@ else:
         logits = logits * (\\4)
     if labels is not None:
         loss = self.loss_function(logits, labels)
-        print(f"[UNSLOTH DEBUG] Eval path 3: loss={loss}, logits.shape={logits.shape}, labels.shape={labels.shape}")
 """.replace("__DYNAMO__RECOMPILING__", __DYNAMO__RECOMPILING__)
 
 ce_finders = [
