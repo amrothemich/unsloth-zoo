@@ -1243,8 +1243,14 @@ def patch_GptOssModel():
         else:
             # Eval/training path
             import sys
+            import gc
             if not self.training:
+                # Aggressive memory cleanup before eval to prevent OOM
+                torch.cuda.empty_cache()
+                gc.collect()
                 print(f"[UNSLOTH DEBUG] EVAL mode: batch_size={bsz}, seq_len={qlen}, use_cache={use_cache}", file=sys.stderr, flush=True)
+                print(f"[UNSLOTH DEBUG] EVAL: Total CUDA memory allocated: {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
+                print(f"[UNSLOTH DEBUG] EVAL: Total CUDA memory reserved: {torch.cuda.memory_reserved() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
                 print(f"[UNSLOTH DEBUG] EVAL: memory allocated before layers: {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
                 print(f"[UNSLOTH DEBUG] EVAL: memory reserved before layers: {torch.cuda.memory_reserved() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
 

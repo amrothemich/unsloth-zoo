@@ -194,10 +194,15 @@ def flex_attention_with_sink(
                 if has_flex_cache:
                     del self_attn._flex_attention_cache
             else:
-                # For eval with long sequences, skip complex padding handling to save memory
-                # Just use the standard mask without in-place modifications
-                # This works because during eval, inputs are typically right-padded and packed properly
-                pass
+                # For eval with long sequences, skip in-place tensor modifications to save memory
+                # But still need to handle attention_mask if provided
+                if attention_mask is not None:
+                    # Don't modify tensors in-place, just create appropriate mask_mod
+                    # Assume no left-padding during eval (inputs are right-padded)
+                    mask_mod = \
+                        generate_sliding_window_mask(sliding_window) \
+                        if type(sliding_window) is int and sliding_window != 0 else \
+                        causal_mask
         else:
             block_mask = self_attn._flex_attention_cache(key)
         pass
@@ -211,7 +216,12 @@ def flex_attention_with_sink(
     if block_mask is None:
         # During eval, use cached block masks (bsz=None, heads=None) to save memory
         # During training, also use cached to save memory
+        import sys
+        if not is_training:
+            print(f"[UNSLOTH DEBUG] Creating block_mask for eval: qlen_Q={qlen_Q}, qlen_KV={qlen_KV}, mask_mod={mask_mod.__name__ if hasattr(mask_mod, '__name__') else type(mask_mod)}", file=sys.stderr, flush=True)
         block_mask = compiled_create_block_mask(mask_mod, None, None, qlen_Q, qlen_KV, device = key.device)
+        if not is_training:
+            print(f"[UNSLOTH DEBUG] Block_mask created successfully", file=sys.stderr, flush=True)
 
     attn_output, logsumexp = (flex_attention if compile else uncompiled_flex_attention)(
         query,
