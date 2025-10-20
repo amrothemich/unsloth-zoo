@@ -73,6 +73,17 @@ try:
             "BLOCK_N2": 32,
         }
         _flex_attention = functools.partial(_flex_attention, kernel_options = kernel_options)
+    elif vram_of_gpu <= 80:
+        # For 80GB GPUs, use moderate block sizes to avoid OOM with large batches
+        kernel_options = {
+            "BLOCK_M": 64,
+            "BLOCK_N": 64,
+            "BLOCK_M1": 64,
+            "BLOCK_N1": 64,
+            "BLOCK_M2": 64,
+            "BLOCK_N2": 64,
+        }
+        _flex_attention = functools.partial(_flex_attention, kernel_options = kernel_options)
     pass
     flex_attention = _torch_compile(_flex_attention)
 

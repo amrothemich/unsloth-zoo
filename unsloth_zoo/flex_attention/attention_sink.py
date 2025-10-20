@@ -218,10 +218,18 @@ def flex_attention_with_sink(
         # During training, also use cached to save memory
         import sys
         if not is_training:
+            print(f"[UNSLOTH DEBUG] Before block_mask creation: CUDA memory = {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
             print(f"[UNSLOTH DEBUG] Creating block_mask for eval: qlen_Q={qlen_Q}, qlen_KV={qlen_KV}, mask_mod={mask_mod.__name__ if hasattr(mask_mod, '__name__') else type(mask_mod)}", file=sys.stderr, flush=True)
         block_mask = compiled_create_block_mask(mask_mod, None, None, qlen_Q, qlen_KV, device = key.device)
         if not is_training:
+            print(f"[UNSLOTH DEBUG] After block_mask creation: CUDA memory = {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
             print(f"[UNSLOTH DEBUG] Block_mask created successfully", file=sys.stderr, flush=True)
+
+    # Debug: ensure block_mask is actually being passed
+    if not is_training:
+        import sys
+        print(f"[UNSLOTH DEBUG] About to call flex_attention with block_mask={type(block_mask)}, enable_gqa={enable_gqa}, return_lse=True", file=sys.stderr, flush=True)
+        print(f"[UNSLOTH DEBUG] Before flex_attention: CUDA memory = {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
 
     attn_output, logsumexp = (flex_attention if compile else uncompiled_flex_attention)(
         query,
@@ -233,6 +241,10 @@ def flex_attention_with_sink(
         scale = scale,
         return_lse = True, # log(sum(exp(xi)))
     )
+
+    if not is_training:
+        import sys
+        print(f"[UNSLOTH DEBUG] After flex_attention: CUDA memory = {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
 
     #### 3 versions to add sink tokens ####
     #### Version 1: Basic reciprocal denominator removal

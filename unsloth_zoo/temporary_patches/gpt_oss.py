@@ -1167,6 +1167,12 @@ def patch_GptOssModel():
         cache_position: Optional[torch.LongTensor] = None,
         **kwargs: KWARGS_TYPE,
     ) -> MoeModelOutputWithPast:
+        # Debug memory at very start of forward
+        if not self.training:
+            import sys
+            print(f"[UNSLOTH DEBUG] FORWARD START: CUDA memory allocated: {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
+            print(f"[UNSLOTH DEBUG] FORWARD START: CUDA memory reserved: {torch.cuda.memory_reserved() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
+
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
 
