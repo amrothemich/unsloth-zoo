@@ -1253,7 +1253,6 @@ def patch_GptOssModel():
             hidden_states = rms_layernorm_forward(self.norm, hidden_states)
         else:
             # Eval/training path
-            import torch
             import sys
             if not self.training:
                 print(f"[UNSLOTH DEBUG] EVAL mode: batch_size={bsz}, seq_len={qlen}, use_cache={use_cache}", file=sys.stderr, flush=True)
