@@ -1252,6 +1252,12 @@ def patch_GptOssModel():
             pass
             hidden_states = rms_layernorm_forward(self.norm, hidden_states)
         else:
+            # Eval/training path
+            import torch
+            import sys
+            if not self.training:
+                print(f"[UNSLOTH DEBUG] EVAL mode: batch_size={bsz}, seq_len={qlen}, use_cache={use_cache}", file=sys.stderr, flush=True)
+                print(f"[UNSLOTH DEBUG] EVAL: memory allocated before layers: {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
             for decoder_layer in self.layers:
                 mask = attention_mask[decoder_layer.attention_type] if isinstance(attention_mask, dict) else attention_mask
                 hidden_states = decoder_layer(
@@ -1266,6 +1272,8 @@ def patch_GptOssModel():
                 )
             pass
             hidden_states = self.norm(hidden_states)
+            if not self.training:
+                print(f"[UNSLOTH DEBUG] EVAL: memory allocated after layers: {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
         # Fix float16 / float32 mismatching
         hidden_states = hidden_states.to(inputs_embeds.dtype)
         return process_return(MoeModelOutputWithPast, {
