@@ -894,13 +894,9 @@ def patch_GptOssAttention():
         #         has_static_cache = has_static_cache,
         #     )
         # attn_weights = None
-        # Use flex attention for training and optionally for eval
-        # UNSLOTH_ENABLE_FLEX_ATTENTION controls whether to use flex attention (default: "1")
-        use_flex_attention = os.environ.get("UNSLOTH_ENABLE_FLEX_ATTENTION", "1") == "1"
-
-        if self.training or use_flex_attention:
-            import sys
-            mode = "TRAINING" if self.training else "EVAL"
+        # Use flex attention for training and eval
+        # Wrap eval in inference_mode to prevent gradient tracking
+        if self.training:
             attn_output = flex_attention_with_sink(
                 self,
                 query_states,
@@ -909,22 +905,15 @@ def patch_GptOssAttention():
             )
             attn_weights = None
         else:
-            import sys
-            print(f"[UNSLOTH DEBUG] Using EAGER attention (layer {self.layer_idx})", file=sys.stderr, flush=True)
-            # Weirdly for inference, flex attention returns gibberish
-            # Most likely due to left padding
-            attn_output, attn_weights = eager_attention_forward(
-                self,
-                query_states,
-                key_states,
-                value_states,
-                attention_mask,
-                dropout=0.0 if not self.training else self.attention_dropout,
-                scaling=self.scaling,
-                sliding_window=self.sliding_window,
-                s_aux=self.sinks,  # diff with Llama
-                **kwargs,
-            )
+            # Use inference_mode during eval to reduce memory
+            with torch.inference_mode():
+                attn_output = flex_attention_with_sink(
+                    self,
+                    query_states,
+                    key_states,
+                    value_states,
+                )
+            attn_weights = None
         attn_output = attn_output.reshape(*input_shape, -1).contiguous()
         attn_output = self.o_proj(attn_output)
         return attn_output, attn_weights
@@ -1257,22 +1246,29 @@ def patch_GptOssModel():
             if not self.training:
                 print(f"[UNSLOTH DEBUG] EVAL mode: batch_size={bsz}, seq_len={qlen}, use_cache={use_cache}", file=sys.stderr, flush=True)
                 print(f"[UNSLOTH DEBUG] EVAL: memory allocated before layers: {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
-            for decoder_layer in self.layers:
-                mask = attention_mask[decoder_layer.attention_type] if isinstance(attention_mask, dict) else attention_mask
-                hidden_states = decoder_layer(
-                    hidden_states,
-                    attention_mask=mask,
-                    position_ids=position_ids,
-                    past_key_values=past_key_values,
-                    use_cache=use_cache,
-                    cache_position=cache_position,
-                    position_embeddings=position_embeddings,
-                    **kwargs,
-                )
-            pass
-            hidden_states = self.norm(hidden_states)
+                print(f"[UNSLOTH DEBUG] EVAL: memory reserved before layers: {torch.cuda.memory_reserved() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
+
+            # Wrap eval in inference_mode to disable gradient tracking
+            context_manager = torch.inference_mode() if not self.training else torch.enable_grad()
+            with context_manager:
+                for decoder_layer in self.layers:
+                    mask = attention_mask[decoder_layer.attention_type] if isinstance(attention_mask, dict) else attention_mask
+                    hidden_states = decoder_layer(
+                        hidden_states,
+                        attention_mask=mask,
+                        position_ids=position_ids,
+                        past_key_values=past_key_values,
+                        use_cache=use_cache,
+                        cache_position=cache_position,
+                        position_embeddings=position_embeddings,
+                        **kwargs,
+                    )
+                pass
+                hidden_states = self.norm(hidden_states)
+
             if not self.training:
                 print(f"[UNSLOTH DEBUG] EVAL: memory allocated after layers: {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
+                print(f"[UNSLOTH DEBUG] EVAL: memory reserved after layers: {torch.cuda.memory_reserved() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
         # Fix float16 / float32 mismatching
         hidden_states = hidden_states.to(inputs_embeds.dtype)
         return process_return(MoeModelOutputWithPast, {
