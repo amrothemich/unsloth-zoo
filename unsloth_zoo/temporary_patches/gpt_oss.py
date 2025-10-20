@@ -901,7 +901,6 @@ def patch_GptOssAttention():
         if self.training or use_flex_attention:
             import sys
             mode = "TRAINING" if self.training else "EVAL"
-            print(f"[UNSLOTH DEBUG] Using FLEX attention in {mode} mode (layer {self.layer_idx})", file=sys.stderr, flush=True)
             attn_output = flex_attention_with_sink(
                 self,
                 query_states,
