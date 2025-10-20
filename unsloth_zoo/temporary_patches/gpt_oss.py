@@ -894,12 +894,20 @@ def patch_GptOssAttention():
         #         has_static_cache = has_static_cache,
         #     )
         # attn_weights = None
-        # Use flex attention for training and eval forward passes
-        # Only use eager attention for decoding when masks are already prepared as dict
-        _, _, qlen, _ = query_states.shape
-        if qlen == 1 and not self.training and isinstance(attention_mask, dict):
-            # Decoding path with prepared masks - use eager attention
-            # Weirdly for decoding, flex attention returns gibberish
+        # Use flex attention for training and optionally for eval
+        # UNSLOTH_ENABLE_FLEX_ATTENTION controls whether to use flex attention (default: "1")
+        use_flex_attention = os.environ.get("UNSLOTH_ENABLE_FLEX_ATTENTION", "1") == "1"
+
+        if self.training or use_flex_attention:
+            attn_output = flex_attention_with_sink(
+                self,
+                query_states,
+                key_states,
+                value_states,
+            )
+            attn_weights = None
+        else:
+            # Weirdly for inference, flex attention returns gibberish
             # Most likely due to left padding
             attn_output, attn_weights = eager_attention_forward(
                 self,
@@ -913,15 +921,6 @@ def patch_GptOssAttention():
                 s_aux=self.sinks,  # diff with Llama
                 **kwargs,
             )
-        else:
-            # Training or eval forward pass - use flex attention
-            attn_output = flex_attention_with_sink(
-                self,
-                query_states,
-                key_states,
-                value_states,
-            )
-            attn_weights = None
         attn_output = attn_output.reshape(*input_shape, -1).contiguous()
         attn_output = self.o_proj(attn_output)
         return attn_output, attn_weights
@@ -1206,9 +1205,7 @@ def patch_GptOssModel():
             pass
 
         # It may already have been prepared by e.g. `generate`
-        # Only create eager masks for decoding (qlen == 1), not for eval forward passes
-        bsz_check, qlen_check, _ = hidden_states.shape
-        if not self.training and qlen_check == 1 and not isinstance(attention_mask, dict):
+        if not self.training and not isinstance(attention_mask, dict):
             mask_kwargs = {
                 "config": self.config,
                 "input_embeds": inputs_embeds,
