@@ -894,11 +894,11 @@ def patch_GptOssAttention():
         #         has_static_cache = has_static_cache,
         #     )
         # attn_weights = None
-        # Use flex attention for training and eval forward passes (qlen > 1)
-        # Only use eager attention for decoding (qlen == 1)
+        # Use flex attention for training and eval forward passes
+        # Only use eager attention for decoding when masks are already prepared as dict
         _, _, qlen, _ = query_states.shape
-        if qlen == 1 and not self.training:
-            # Decoding path - use eager attention with prepared masks
+        if qlen == 1 and not self.training and isinstance(attention_mask, dict):
+            # Decoding path with prepared masks - use eager attention
             # Weirdly for decoding, flex attention returns gibberish
             # Most likely due to left padding
             attn_output, attn_weights = eager_attention_forward(
