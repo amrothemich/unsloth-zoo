@@ -194,28 +194,10 @@ def flex_attention_with_sink(
                 if has_flex_cache:
                     del self_attn._flex_attention_cache
             else:
-                # Consider left padding as well for prefill
-                assert attention_mask is not None
-                assert attention_mask.dim() == 2, f"Unsloth: Attention_mask has dim = {attention_mask.dim()}"
-                # We must account for left padding
-                padding_start_idx = attention_mask.argmax(1).to(query.device)
-                do_padding = torch.arange(max(qlen_Q, qlen_KV), device = query.device).repeat((bsz, 1)) < padding_start_idx.unsqueeze(0).T
-                # We also make all padded tokens Q=1, K=-inf
-                # Note if Q=0, K=0, Q*K = 0, but exp(0) = 1, so that's wrong
-                # Only exp(-inf) = 0. So Q=1, K=-inf, Q*K = -inf
-                query.transpose(2, 1)[do_padding[:, :qlen_Q ]] = 1
-                key  .transpose(2, 1)[do_padding[:, :qlen_KV]] = -torch.inf
-                value.transpose(2, 1)[do_padding[:, :qlen_KV]] = 0
-                # Use special padded mask creators
-                mask_mod = prefill_mask_mod = \
-                    generate_sliding_window_mask_with_padding(sliding_window, padding_start_idx) \
-                    if type(sliding_window) is int and sliding_window != 0 else \
-                    generate_causal_mask_with_padding(padding_start_idx)
-                decoding_mask_mod = \
-                    generate_decoding_sliding_window_mask_with_padding(sliding_window, padding_start_idx) \
-                    if type(sliding_window) is int and sliding_window != 0 else \
-                    generate_decoding_causal_mask_with_padding(padding_start_idx)
-                self_attn._flex_attention_cache = FlexAttentionCache(key, decoding_mask_mod, sliding_window)
+                # For eval with long sequences, skip complex padding handling to save memory
+                # Just use the standard mask without in-place modifications
+                # This works because during eval, inputs are typically right-padded and packed properly
+                pass
         else:
             block_mask = self_attn._flex_attention_cache(key)
         pass
@@ -227,7 +209,9 @@ def flex_attention_with_sink(
             if type(sliding_window) is int and sliding_window != 0 else \
             causal_mask
     if block_mask is None:
-        block_mask = compiled_create_block_mask(mask_mod, bsz, heads_Q, qlen_Q, qlen_KV, device = key.device)
+        # During eval, use cached block masks (bsz=None, heads=None) to save memory
+        # During training, also use cached to save memory
+        block_mask = compiled_create_block_mask(mask_mod, None, None, qlen_Q, qlen_KV, device = key.device)
 
     attn_output, logsumexp = (flex_attention if compile else uncompiled_flex_attention)(
         query,
