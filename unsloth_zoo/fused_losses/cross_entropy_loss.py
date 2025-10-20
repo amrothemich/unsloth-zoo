@@ -291,9 +291,7 @@ class UnslothFusedLoss(torch.autograd.Function):
             accumulated_loss.add_(unscaled_loss)
             grad_inputs_j[:] = chunk_grad_input
         pass
-        # Only compile if torch_compile is enabled AND we're not already inside a dynamo trace
-        # This prevents nested FX trace errors during evaluation
-        if torch_compile and not torch.compiler.is_compiling():
+        if torch_compile:
             accumulate_chunk = torch.compile(
                 accumulate_chunk,
                 dynamic = True,
