@@ -192,14 +192,18 @@ def requires_grad_for_gradient_checkpointing(model):
 
     # Add post forward hook
     def requires_grad_post_hook(module, input, output):
+        # Skip if we're in inference mode - can't set requires_grad in that context
+        if torch.is_inference_mode_enabled():
+            return output
+
         type_output = type(output)
         if type_output is torch.Tensor:
             output.requires_grad_(True)
         else:
-            try: # For dataclass from HF, try on loss or logits 
+            try: # For dataclass from HF, try on loss or logits
                 if hasattr(output, "loss") and output.loss is not None:
                     output.loss.requires_grad_(True)
-                elif hasattr(output, "logits") and output.logits is not None: #with RL like GRPO there are no loss as you don't provide labels 
+                elif hasattr(output, "logits") and output.logits is not None: #with RL like GRPO there are no loss as you don't provide labels
                     output.logits.requires_grad_(True)
                 else:
                     raise ValueError("Neither loss nor logits are available for grad post hook.")

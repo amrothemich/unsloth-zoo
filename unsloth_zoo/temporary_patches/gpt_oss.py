@@ -1346,32 +1346,10 @@ def patch_GptOssForCausalLM():
     def inference_mode_wrapper(self, *args, **kwargs):
         """Wrapper that ensures inference mode during eval to prevent gradient allocation"""
         if not self.training:
-            # CRITICAL: Must use inference_mode to prevent 53GB gradient allocation on logits
-            # But we need to temporarily remove the gradient checkpointing hooks first
-            # The hooks are on base_model (PEFT wrapper), not on self
-            hooks_to_restore = []
-            try:
-                # Walk through the model hierarchy to remove grad checkpoint hooks
-                modules_to_check = [self]
-                if hasattr(self, 'base_model'):
-                    modules_to_check.append(self.base_model)
-                if hasattr(self, 'model'):
-                    modules_to_check.append(self.model)
-
-                for module in modules_to_check:
-                    if hasattr(module, '_forward_hooks'):
-                        for hook_id in list(module._forward_hooks.keys()):
-                            hook = module._forward_hooks[hook_id]
-                            # Check if this is the unsloth grad checkpoint hook
-                            if hasattr(hook, '__name__') and 'requires_grad' in hook.__name__:
-                                hooks_to_restore.append((module, hook_id, module._forward_hooks.pop(hook_id)))
-
-                with torch.inference_mode():
-                    return original_forward(self, *args, **kwargs)
-            finally:
-                # Restore hooks for training
-                for module, hook_id, hook in hooks_to_restore:
-                    module._forward_hooks[hook_id] = hook
+            # Use inference_mode for maximum performance
+            # The hook in peft_utils.py now checks torch.is_inference_mode_enabled() and skips
+            with torch.inference_mode():
+                return original_forward(self, *args, **kwargs)
         else:
             return original_forward(self, *args, **kwargs)
 
