@@ -889,13 +889,13 @@ def patch_GptOssAttention():
             attn_weights = None
         else:
             # Use inference_mode during eval to reduce memory
-            with torch.inference_mode():
-                attn_output = flex_attention_with_sink(
-                    self,
-                    query_states,
-                    key_states,
-                    value_states,
-                )
+            # Note: Parent forward should also be in inference_mode
+            attn_output = flex_attention_with_sink(
+                self,
+                query_states,
+                key_states,
+                value_states,
+            )
             import sys
             print(f"[UNSLOTH DEBUG] After flex_attention_with_sink returned: CUDA memory = {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
             attn_weights = None
@@ -1257,8 +1257,12 @@ def patch_GptOssModel():
                 print(f"[UNSLOTH DEBUG] EVAL: memory reserved before layers: {torch.cuda.memory_reserved() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
 
             # Wrap eval in inference_mode to disable gradient tracking
-            context_manager = torch.inference_mode() if not self.training else torch.enable_grad()
-            with context_manager:
+            # Use the context manager class, not an instance
+            if not self.training:
+                context_manager = torch.inference_mode
+            else:
+                context_manager = torch.enable_grad
+            with context_manager():
                 for decoder_layer in self.layers:
                     mask = attention_mask[decoder_layer.attention_type] if isinstance(attention_mask, dict) else attention_mask
                     hidden_states = decoder_layer(
