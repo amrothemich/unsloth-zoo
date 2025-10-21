@@ -1294,15 +1294,21 @@ def patch_GptOssModel():
         # Fix float16 / float32 mismatching
         hidden_states = hidden_states.to(inputs_embeds.dtype)
 
-        # Detach outputs during eval to prevent gradient graph construction
+        # CRITICAL: Detach outputs during eval to prevent gradient graph construction
+        # Even though we're in inference_mode here, the CausalLM layer that calls us
+        # will compute logits outside our inference_mode context
+        # We must ensure hidden_states cannot accumulate gradients
         if not self.training:
             hidden_states = hidden_states.detach()
+            # Force requires_grad to False to prevent any gradient computation
+            if hidden_states.requires_grad:
+                hidden_states.requires_grad_(False)
             import sys
             bsz_final = hidden_states.shape[0]
             seq_final = hidden_states.shape[1]
             print(f"[UNSLOTH DEBUG] EVAL: Before return, batch_size={bsz_final}, seq_len={seq_final}", file=sys.stderr, flush=True)
             print(f"[UNSLOTH DEBUG] EVAL: Before return, hidden_states.requires_grad = {hidden_states.requires_grad}", file=sys.stderr, flush=True)
-            print(f"[UNSLOTH DEBUG] EVAL: Before return, hidden_states.shape = {hidden_states.shape}", file=sys.stderr, flush=True)
+            print(f"[UNSLOTH DEBUG] EVAL: Before return, hidden_states.is_leaf = {hidden_states.is_leaf}", file=sys.stderr, flush=True)
 
         return process_return(MoeModelOutputWithPast, {
             "last_hidden_state" : hidden_states,
@@ -1331,22 +1337,13 @@ def patch_GptOssForCausalLM():
     except Exception as e:
         return raise_error("transformers.models.gpt_oss.modeling_gpt_oss.GptOssForCausalLM", e)
 
-    # Get the original forward
-    original_forward = GptOssForCausalLM.forward
-
-    def wrapped_forward(self, *args, **kwargs):
-        """Wrapper that ensures inference mode during eval"""
-        if not self.training:
-            with torch.inference_mode():
-                import sys
-                print(f"[UNSLOTH DEBUG] CausalLM forward in inference_mode: {torch.is_inference_mode_enabled()}", file=sys.stderr, flush=True)
-                return original_forward(self, *args, **kwargs)
-        else:
-            return original_forward(self, *args, **kwargs)
-
-    GptOssForCausalLM.forward = wrapped_forward
+    # DISABLED: This wrapper was causing unsloth's RL patch to activate incorrectly
+    # The inference_mode is already set in GptOssModel.forward
+    # Wrapping here changes the function signature and breaks unsloth's detection
+    logger.info("Unsloth: Skipping CausalLM wrapper to avoid RL patch conflict")
 pass
-TEMPORARY_PATCHES.append(patch_GptOssForCausalLM)
+# TEMPORARILY DISABLED - causes RL patch to activate
+# TEMPORARY_PATCHES.append(patch_GptOssForCausalLM)
 
 try:
     from openai_harmony import (
