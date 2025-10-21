@@ -263,7 +263,16 @@ def flex_attention_with_sink(
     attn_output = attn_output * sink_scale.unsqueeze(-1).to(attn_output.dtype)
     # To reduce error, one should do attn_output.to(torch.float32)
 
+    if not is_training:
+        import sys
+        print(f"[UNSLOTH DEBUG] After sink scaling: CUDA memory = {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
+
     attn_output = attn_output.transpose(1, 2).contiguous()
+
+    if not is_training:
+        import sys
+        print(f"[UNSLOTH DEBUG] After transpose/contiguous: CUDA memory = {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
+
     return attn_output
 pass
 

@@ -913,9 +913,13 @@ def patch_GptOssAttention():
                     key_states,
                     value_states,
                 )
+            import sys
+            print(f"[UNSLOTH DEBUG] After flex_attention_with_sink returned: CUDA memory = {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
             attn_weights = None
         attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+        print(f"[UNSLOTH DEBUG] After reshape/contiguous: CUDA memory = {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
         attn_output = self.o_proj(attn_output)
+        print(f"[UNSLOTH DEBUG] After o_proj: CUDA memory = {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
         return attn_output, attn_weights
     pass
 
@@ -1254,6 +1258,9 @@ def patch_GptOssModel():
                 # Aggressive memory cleanup before eval to prevent OOM
                 torch.cuda.empty_cache()
                 gc.collect()
+                # Try to clear torch.compile cache
+                if hasattr(torch.compiler, "reset"):
+                    torch.compiler.reset()
                 print(f"[UNSLOTH DEBUG] EVAL mode: batch_size={bsz}, seq_len={qlen}, use_cache={use_cache}", file=sys.stderr, flush=True)
                 print(f"[UNSLOTH DEBUG] EVAL: Total CUDA memory allocated: {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
                 print(f"[UNSLOTH DEBUG] EVAL: Total CUDA memory reserved: {torch.cuda.memory_reserved() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
