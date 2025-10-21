@@ -1346,10 +1346,28 @@ def patch_GptOssForCausalLM():
     def inference_mode_wrapper(self, *args, **kwargs):
         """Wrapper that ensures inference mode during eval to prevent gradient allocation"""
         if not self.training:
-            # Use inference_mode for maximum performance
-            # The hook in peft_utils.py now checks torch.is_inference_mode_enabled() and skips
-            with torch.inference_mode():
-                return original_forward(self, *args, **kwargs)
+            # Preemptively remove all forward hooks before entering inference mode
+            # The requires_grad_for_gradient_checkpointing hook conflicts with inference_mode
+            hooks_backup = {}
+            try:
+                # Get the actual model (might be wrapped by PEFT)
+                actual_model = self.base_model if hasattr(self, 'base_model') else self
+
+                # Remove ALL forward hooks from all modules during eval
+                # We'll restore them afterward for future training
+                for module in actual_model.modules():
+                    if hasattr(module, '_forward_hooks') and len(module._forward_hooks) > 0:
+                        hooks_backup[module] = dict(module._forward_hooks)
+                        module._forward_hooks.clear()
+
+                # Now run with inference_mode with hooks removed
+                with torch.inference_mode():
+                    result = original_forward(self, *args, **kwargs)
+                return result
+            finally:
+                # Restore all hooks for future training
+                for module, hooks in hooks_backup.items():
+                    module._forward_hooks.update(hooks)
         else:
             return original_forward(self, *args, **kwargs)
 
@@ -1364,39 +1382,43 @@ TEMPORARY_PATCHES.append(patch_GptOssForCausalLM)
 
 
 def patch_peft_utils_hook():
-    """Patch the requires_grad hook to skip during inference mode"""
-    try:
-        from unsloth_zoo import peft_utils
+    """Patch all existing requires_grad hooks to skip during inference mode"""
+    # This runs early, but hooks might be added later, so we patch the wrapper itself
+    def wrap_existing_hooks():
+        """Find and wrap all existing hooks in all modules"""
+        import gc
+        import sys
 
-        # Get the original function
-        original_requires_grad_for_gradient_checkpointing = peft_utils.requires_grad_for_gradient_checkpointing
+        # Get all modules that might have hooks
+        for obj in gc.get_objects():
+            try:
+                if isinstance(obj, torch.nn.Module):
+                    if hasattr(obj, '_forward_hooks') and len(obj._forward_hooks) > 0:
+                        for hook_id, hook in list(obj._forward_hooks.items()):
+                            # Check if this is the requires_grad hook
+                            hook_name = getattr(hook, '__name__', '')
+                            if 'requires_grad' in hook_name and 'post_hook' in hook_name:
+                                # Wrap it
+                                original_hook = hook
 
-        def patched_requires_grad_for_gradient_checkpointing(model):
-            # Call the original to set everything up
-            original_requires_grad_for_gradient_checkpointing(model)
+                                def safe_hook(module, input, output, _original=original_hook):
+                                    if torch.is_inference_mode_enabled():
+                                        return output
+                                    try:
+                                        return _original(module, input, output)
+                                    except RuntimeError as e:
+                                        if 'inference tensor' in str(e):
+                                            # Silently skip if in inference mode
+                                            return output
+                                        raise
 
-            # Now patch the hook that was just registered
-            for name, module in model.named_modules():
-                if hasattr(module, '_forward_hooks') and len(module._forward_hooks) > 0:
-                    for hook_id, hook in list(module._forward_hooks.items()):
-                        if hasattr(hook, '__name__') and 'requires_grad' in hook.__name__:
-                            # Wrap the hook to check inference mode
-                            original_hook = hook
+                                obj._forward_hooks[hook_id] = safe_hook
+            except:
+                pass
 
-                            def safe_hook(module, input, output, _original_hook=original_hook):
-                                # Skip if in inference mode
-                                if torch.is_inference_mode_enabled():
-                                    return output
-                                return _original_hook(module, input, output)
-
-                            # Replace the hook
-                            module._forward_hooks[hook_id] = safe_hook
-
-        # Replace the function
-        peft_utils.requires_grad_for_gradient_checkpointing = patched_requires_grad_for_gradient_checkpointing
-        logger.info("Unsloth: Patched peft_utils.requires_grad_for_gradient_checkpointing to handle inference mode")
-    except Exception as e:
-        logger.warning(f"Unsloth: Could not patch peft_utils hook: {e}")
+    # Wrap existing hooks immediately
+    wrap_existing_hooks()
+    logger.info("Unsloth: Wrapped existing requires_grad hooks to handle inference mode")
 pass
 TEMPORARY_PATCHES.append(patch_peft_utils_hook)
 
