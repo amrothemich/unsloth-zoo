@@ -1170,8 +1170,14 @@ def patch_GptOssModel():
             # Account for CPU offloaded embed_tokens
             embed_device = self.embed_tokens.weight.device
             inputs_embeds = self.embed_tokens(input_ids.to(embed_device, non_blocking = True)).to(input_ids.device)
+
+        # CRITICAL: Ensure no gradients during eval
         if not self.training:
+            inputs_embeds = inputs_embeds.detach()
             inputs_embeds.requires_grad_(False)
+            if not self.training:
+                import sys
+                print(f"[UNSLOTH DEBUG] After detach: inputs_embeds.requires_grad = {inputs_embeds.requires_grad}", file=sys.stderr, flush=True)
 
         if cache_position is None:
             past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
@@ -1271,8 +1277,17 @@ def patch_GptOssModel():
             if not self.training:
                 print(f"[UNSLOTH DEBUG] EVAL: memory allocated after layers: {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
                 print(f"[UNSLOTH DEBUG] EVAL: memory reserved after layers: {torch.cuda.memory_reserved() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
+                print(f"[UNSLOTH DEBUG] EVAL: torch.is_inference_mode_enabled() = {torch.is_inference_mode_enabled()}", file=sys.stderr, flush=True)
+                print(f"[UNSLOTH DEBUG] EVAL: hidden_states.requires_grad = {hidden_states.requires_grad}", file=sys.stderr, flush=True)
         # Fix float16 / float32 mismatching
         hidden_states = hidden_states.to(inputs_embeds.dtype)
+
+        # Detach outputs during eval to prevent gradient graph construction
+        if not self.training:
+            hidden_states = hidden_states.detach()
+            import sys
+            print(f"[UNSLOTH DEBUG] EVAL: Before return, hidden_states.requires_grad = {hidden_states.requires_grad}", file=sys.stderr, flush=True)
+
         return process_return(MoeModelOutputWithPast, {
             "last_hidden_state" : hidden_states,
             "past_key_values" : past_key_values,
