@@ -1362,6 +1362,45 @@ TEMPORARY_PATCHES.append(patch_GptOssForCausalLM)
 # Note: The fix for unsloth's RL prediction_step is now in unsloth/unsloth/models/rl.py
 # No longer need a workaround patch here
 
+
+def patch_peft_utils_hook():
+    """Patch the requires_grad hook to skip during inference mode"""
+    try:
+        from unsloth_zoo import peft_utils
+
+        # Get the original function
+        original_requires_grad_for_gradient_checkpointing = peft_utils.requires_grad_for_gradient_checkpointing
+
+        def patched_requires_grad_for_gradient_checkpointing(model):
+            # Call the original to set everything up
+            original_requires_grad_for_gradient_checkpointing(model)
+
+            # Now patch the hook that was just registered
+            for name, module in model.named_modules():
+                if hasattr(module, '_forward_hooks') and len(module._forward_hooks) > 0:
+                    for hook_id, hook in list(module._forward_hooks.items()):
+                        if hasattr(hook, '__name__') and 'requires_grad' in hook.__name__:
+                            # Wrap the hook to check inference mode
+                            original_hook = hook
+
+                            def safe_hook(module, input, output, _original_hook=original_hook):
+                                # Skip if in inference mode
+                                if torch.is_inference_mode_enabled():
+                                    return output
+                                return _original_hook(module, input, output)
+
+                            # Replace the hook
+                            module._forward_hooks[hook_id] = safe_hook
+
+        # Replace the function
+        peft_utils.requires_grad_for_gradient_checkpointing = patched_requires_grad_for_gradient_checkpointing
+        logger.info("Unsloth: Patched peft_utils.requires_grad_for_gradient_checkpointing to handle inference mode")
+    except Exception as e:
+        logger.warning(f"Unsloth: Could not patch peft_utils hook: {e}")
+pass
+TEMPORARY_PATCHES.append(patch_peft_utils_hook)
+
+
 try:
     from openai_harmony import (
         Author,
