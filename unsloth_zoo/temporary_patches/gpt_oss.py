@@ -1337,13 +1337,26 @@ def patch_GptOssForCausalLM():
     except Exception as e:
         return raise_error("transformers.models.gpt_oss.modeling_gpt_oss.GptOssForCausalLM", e)
 
-    # DISABLED: This wrapper was causing unsloth's RL patch to activate incorrectly
-    # The inference_mode is already set in GptOssModel.forward
-    # Wrapping here changes the function signature and breaks unsloth's detection
-    logger.info("Unsloth: Skipping CausalLM wrapper to avoid RL patch conflict")
+    # Get the original forward - might already be patched by unsloth
+    original_forward = GptOssForCausalLM.forward
+
+    # Use functools.wraps to preserve function metadata so unsloth detection still works
+    import functools
+    @functools.wraps(original_forward)
+    def inference_mode_wrapper(self, *args, **kwargs):
+        """Wrapper that ensures inference mode during eval to prevent gradient allocation"""
+        if not self.training:
+            # CRITICAL: Must use inference_mode to prevent 53GB gradient allocation on logits
+            with torch.inference_mode():
+                return original_forward(self, *args, **kwargs)
+        else:
+            return original_forward(self, *args, **kwargs)
+
+    # Replace the forward method
+    GptOssForCausalLM.forward = inference_mode_wrapper
+    logger.info("Unsloth: Patched GptOssForCausalLM.forward with inference_mode wrapper")
 pass
-# TEMPORARILY DISABLED - causes RL patch to activate
-# TEMPORARY_PATCHES.append(patch_GptOssForCausalLM)
+TEMPORARY_PATCHES.append(patch_GptOssForCausalLM)
 
 try:
     from openai_harmony import (
