@@ -1143,7 +1143,7 @@ def patch_GptOssModel():
     if has_static_cache and Version(torch.__version__) >= Version("2.9.0"):
         inference_forward = _torch_compile(inference_forward, dynamic = None, fullgraph = True, options = fused_torch_compile_options)
 
-    def forward(
+    def forward_impl(
         self,
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
@@ -1159,6 +1159,8 @@ def patch_GptOssModel():
             import sys
             print(f"[UNSLOTH DEBUG] FORWARD START: CUDA memory allocated: {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
             print(f"[UNSLOTH DEBUG] FORWARD START: CUDA memory reserved: {torch.cuda.memory_reserved() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
+            print(f"[UNSLOTH DEBUG] FORWARD START: torch.is_grad_enabled() = {torch.is_grad_enabled()}", file=sys.stderr, flush=True)
+            print(f"[UNSLOTH DEBUG] FORWARD START: torch.is_inference_mode_enabled() = {torch.is_inference_mode_enabled()}", file=sys.stderr, flush=True)
 
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
@@ -1257,26 +1259,32 @@ def patch_GptOssModel():
                 print(f"[UNSLOTH DEBUG] EVAL: memory reserved before layers: {torch.cuda.memory_reserved() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
 
             # Wrap eval in inference_mode to disable gradient tracking
-            # Use the context manager class, not an instance
             if not self.training:
-                context_manager = torch.inference_mode
-            else:
-                context_manager = torch.enable_grad
-            with context_manager():
-                for decoder_layer in self.layers:
-                    mask = attention_mask[decoder_layer.attention_type] if isinstance(attention_mask, dict) else attention_mask
-                    hidden_states = decoder_layer(
-                        hidden_states,
-                        attention_mask=mask,
-                        position_ids=position_ids,
-                        past_key_values=past_key_values,
-                        use_cache=use_cache,
-                        cache_position=cache_position,
-                        position_embeddings=position_embeddings,
-                        **kwargs,
-                    )
-                pass
-                hidden_states = self.norm(hidden_states)
+                # Manually enter inference mode
+                _prev_grad_state = torch.is_grad_enabled()
+                torch.set_grad_enabled(False)
+                inference_mode_ctx = torch.inference_mode()
+                inference_mode_ctx.__enter__()
+
+            for decoder_layer in self.layers:
+                mask = attention_mask[decoder_layer.attention_type] if isinstance(attention_mask, dict) else attention_mask
+                hidden_states = decoder_layer(
+                    hidden_states,
+                    attention_mask=mask,
+                    position_ids=position_ids,
+                    past_key_values=past_key_values,
+                    use_cache=use_cache,
+                    cache_position=cache_position,
+                    position_embeddings=position_embeddings,
+                    **kwargs,
+                )
+            pass
+            hidden_states = self.norm(hidden_states)
+
+            if not self.training:
+                # Exit inference mode
+                inference_mode_ctx.__exit__(None, None, None)
+                torch.set_grad_enabled(_prev_grad_state)
 
             if not self.training:
                 print(f"[UNSLOTH DEBUG] EVAL: memory allocated after layers: {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
@@ -1290,12 +1298,25 @@ def patch_GptOssModel():
         if not self.training:
             hidden_states = hidden_states.detach()
             import sys
+            bsz_final = hidden_states.shape[0]
+            seq_final = hidden_states.shape[1]
+            print(f"[UNSLOTH DEBUG] EVAL: Before return, batch_size={bsz_final}, seq_len={seq_final}", file=sys.stderr, flush=True)
             print(f"[UNSLOTH DEBUG] EVAL: Before return, hidden_states.requires_grad = {hidden_states.requires_grad}", file=sys.stderr, flush=True)
+            print(f"[UNSLOTH DEBUG] EVAL: Before return, hidden_states.shape = {hidden_states.shape}", file=sys.stderr, flush=True)
 
         return process_return(MoeModelOutputWithPast, {
             "last_hidden_state" : hidden_states,
             "past_key_values" : past_key_values,
         })
+
+    def forward(self, *args, **kwargs):
+        """Wrapper that applies inference_mode during eval"""
+        if not self.training:
+            with torch.inference_mode():
+                return forward_impl(self, *args, **kwargs)
+        else:
+            return forward_impl(self, *args, **kwargs)
+
     patch_function(transformers.models.gpt_oss.modeling_gpt_oss.GptOssModel, "forward", forward, match_level = "relaxed")
 pass
 TEMPORARY_PATCHES.append(patch_GptOssModel)
