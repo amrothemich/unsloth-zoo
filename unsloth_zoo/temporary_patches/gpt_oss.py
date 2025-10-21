@@ -1346,40 +1346,9 @@ def patch_GptOssForCausalLM():
     def inference_mode_wrapper(self, *args, **kwargs):
         """Wrapper that ensures inference mode during eval to prevent gradient allocation"""
         if not self.training:
-            # Preemptively remove all forward hooks before entering inference mode
-            # The requires_grad_for_gradient_checkpointing hook conflicts with inference_mode
-            hooks_backup = {}
-            pre_hooks_backup = {}
-            try:
-                # Remove hooks from BOTH self (PEFT wrapper) and base_model
-                # The requires_grad hook is registered on the wrapper, not the base model
-                models_to_check = [self]
-                if hasattr(self, 'base_model'):
-                    models_to_check.append(self.base_model)
-
-                # Remove ALL forward hooks (both pre and post) from all modules during eval
-                # We'll restore them afterward for future training
-                for model in models_to_check:
-                    for module in model.modules():
-                        # Remove post-hooks
-                        if hasattr(module, '_forward_hooks') and len(module._forward_hooks) > 0:
-                            hooks_backup[module] = dict(module._forward_hooks)
-                            module._forward_hooks.clear()
-                        # Remove pre-hooks
-                        if hasattr(module, '_forward_pre_hooks') and len(module._forward_pre_hooks) > 0:
-                            pre_hooks_backup[module] = dict(module._forward_pre_hooks)
-                            module._forward_pre_hooks.clear()
-
-                # Now run with inference_mode with hooks removed
-                with torch.inference_mode():
-                    result = original_forward(self, *args, **kwargs)
-                return result
-            finally:
-                # Restore all hooks for future training
-                for module, hooks in hooks_backup.items():
-                    module._forward_hooks.update(hooks)
-                for module, hooks in pre_hooks_backup.items():
-                    module._forward_pre_hooks.update(hooks)
+            # Use inference_mode during eval
+            with torch.inference_mode():
+                return original_forward(self, *args, **kwargs)
         else:
             return original_forward(self, *args, **kwargs)
 

@@ -212,13 +212,17 @@ def requires_grad_for_gradient_checkpointing(model):
     pass
 
     def requires_grad_pre_hook(module, input):
+        # Skip if we're in inference mode - can't set requires_grad in that context
+        if torch.is_inference_mode_enabled():
+            return input
+
         type_input = type(input)
         if type_input is torch.Tensor:
             input.requires_grad_(True)
         elif type_input is tuple or type_input is list:
             if len(input) == 0:
                 raise RuntimeError("Unsloth: Failed to make input require gradients!")
-                # print(f"  WARNING: Empty list input to {module.__class__.__name__}!") # 
+                # print(f"  WARNING: Empty list input to {module.__class__.__name__}!") #
                 # return
             if torch.is_floating_point(input[0]):
                 input[0].requires_grad_(True)
