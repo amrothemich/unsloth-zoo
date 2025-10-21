@@ -1347,23 +1347,31 @@ def patch_GptOssForCausalLM():
         """Wrapper that ensures inference mode during eval to prevent gradient allocation"""
         if not self.training:
             # CRITICAL: Must use inference_mode to prevent 53GB gradient allocation on logits
-            # But we need to temporarily remove the gradient checkpointing hook first
+            # But we need to temporarily remove the gradient checkpointing hooks first
+            # The hooks are on base_model (PEFT wrapper), not on self
             hooks_to_restore = []
             try:
-                # Remove forward hooks that try to set requires_grad during inference_mode
-                if hasattr(self, '_forward_hooks'):
-                    for hook_id in list(self._forward_hooks.keys()):
-                        hook = self._forward_hooks[hook_id]
-                        # Check if this is the unsloth grad checkpoint hook
-                        if hasattr(hook, '__name__') and 'requires_grad' in hook.__name__:
-                            hooks_to_restore.append((hook_id, self._forward_hooks.pop(hook_id)))
+                # Walk through the model hierarchy to remove grad checkpoint hooks
+                modules_to_check = [self]
+                if hasattr(self, 'base_model'):
+                    modules_to_check.append(self.base_model)
+                if hasattr(self, 'model'):
+                    modules_to_check.append(self.model)
+
+                for module in modules_to_check:
+                    if hasattr(module, '_forward_hooks'):
+                        for hook_id in list(module._forward_hooks.keys()):
+                            hook = module._forward_hooks[hook_id]
+                            # Check if this is the unsloth grad checkpoint hook
+                            if hasattr(hook, '__name__') and 'requires_grad' in hook.__name__:
+                                hooks_to_restore.append((module, hook_id, module._forward_hooks.pop(hook_id)))
 
                 with torch.inference_mode():
                     return original_forward(self, *args, **kwargs)
             finally:
                 # Restore hooks for training
-                for hook_id, hook in hooks_to_restore:
-                    self._forward_hooks[hook_id] = hook
+                for module, hook_id, hook in hooks_to_restore:
+                    module._forward_hooks[hook_id] = hook
         else:
             return original_forward(self, *args, **kwargs)
 
