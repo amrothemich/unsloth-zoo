@@ -1321,6 +1321,33 @@ def patch_GptOssModel():
 pass
 TEMPORARY_PATCHES.append(patch_GptOssModel)
 
+
+def patch_GptOssForCausalLM():
+    """Patch the CausalLM forward to use inference mode during eval"""
+    if "gpt_oss" not in os.environ.get("UNSLOTH_MODEL_NAME", ""): return
+    try:
+        import transformers.models.gpt_oss.modeling_gpt_oss
+        GptOssForCausalLM = transformers.models.gpt_oss.modeling_gpt_oss.GptOssForCausalLM
+    except Exception as e:
+        return raise_error("transformers.models.gpt_oss.modeling_gpt_oss.GptOssForCausalLM", e)
+
+    # Get the original forward
+    original_forward = GptOssForCausalLM.forward
+
+    def wrapped_forward(self, *args, **kwargs):
+        """Wrapper that ensures inference mode during eval"""
+        if not self.training:
+            with torch.inference_mode():
+                import sys
+                print(f"[UNSLOTH DEBUG] CausalLM forward in inference_mode: {torch.is_inference_mode_enabled()}", file=sys.stderr, flush=True)
+                return original_forward(self, *args, **kwargs)
+        else:
+            return original_forward(self, *args, **kwargs)
+
+    GptOssForCausalLM.forward = wrapped_forward
+pass
+TEMPORARY_PATCHES.append(patch_GptOssForCausalLM)
+
 try:
     from openai_harmony import (
         Author,
