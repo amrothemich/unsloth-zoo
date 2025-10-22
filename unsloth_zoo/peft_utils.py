@@ -196,18 +196,34 @@ def requires_grad_for_gradient_checkpointing(model):
         if torch.is_inference_mode_enabled():
             return output
 
+        # Skip if gradients are disabled (e.g., during evaluation or no_grad context)
+        if not torch.is_grad_enabled():
+            return output
+
         type_output = type(output)
         if type_output is torch.Tensor:
-            output.requires_grad_(True)
+            try:
+                output.requires_grad_(True)
+            except RuntimeError:
+                # Tensor was created in inference mode, skip it
+                return output
         else:
             try: # For dataclass from HF, try on loss or logits
                 if hasattr(output, "loss") and output.loss is not None:
-                    output.loss.requires_grad_(True)
+                    try:
+                        output.loss.requires_grad_(True)
+                    except RuntimeError:
+                        # Tensor was created in inference mode, skip it
+                        pass
                 elif hasattr(output, "logits") and output.logits is not None: #with RL like GRPO there are no loss as you don't provide labels
-                    output.logits.requires_grad_(True)
+                    try:
+                        output.logits.requires_grad_(True)
+                    except RuntimeError:
+                        # Tensor was created in inference mode, skip it
+                        pass
                 else:
                     raise ValueError("Neither loss nor logits are available for grad post hook.")
-            except Exception as e:
+            except ValueError as e:
                 raise RuntimeError(f"Unsloth: Failed to make output require gradients: {e}")
     pass
 
@@ -216,16 +232,28 @@ def requires_grad_for_gradient_checkpointing(model):
         if torch.is_inference_mode_enabled():
             return input
 
+        # Skip if gradients are disabled (e.g., during evaluation or no_grad context)
+        if not torch.is_grad_enabled():
+            return input
+
         type_input = type(input)
         if type_input is torch.Tensor:
-            input.requires_grad_(True)
+            try:
+                input.requires_grad_(True)
+            except RuntimeError:
+                # Tensor was created in inference mode, skip it
+                pass
         elif type_input is tuple or type_input is list:
             if len(input) == 0:
                 raise RuntimeError("Unsloth: Failed to make input require gradients!")
                 # print(f"  WARNING: Empty list input to {module.__class__.__name__}!") #
                 # return
             if torch.is_floating_point(input[0]):
-                input[0].requires_grad_(True)
+                try:
+                    input[0].requires_grad_(True)
+                except RuntimeError:
+                    # Tensor was created in inference mode, skip it
+                    pass
         else:
             raise RuntimeError("Unsloth: Failed to make input require gradients!")
     pass
