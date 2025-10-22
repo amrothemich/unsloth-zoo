@@ -616,19 +616,10 @@ class GptOssMLP(nn.Module):
 
     def forward(self, hidden_states):
         bsz, qlen, hd = hidden_states.shape
-        if not self.training:
-            import sys
-            print(f"[UNSLOTH DEBUG] MLP forward START: CUDA memory = {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
         if qlen == 1 and not self.training:
             return moe_forward_inference(self, hidden_states), None
         router_scores, router_indices = self.router(hidden_states)  # (num_experts, seq_len)
-        if not self.training:
-            import sys
-            print(f"[UNSLOTH DEBUG] After router: CUDA memory = {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
         routed_out = self.experts(hidden_states, router_indices=router_indices, routing_weights=router_scores)
-        if not self.training:
-            import sys
-            print(f"[UNSLOTH DEBUG] After experts: CUDA memory = {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
         return routed_out, router_scores
 pass
 
@@ -896,13 +887,9 @@ def patch_GptOssAttention():
                 key_states,
                 value_states,
             )
-            import sys
-            print(f"[UNSLOTH DEBUG] After flex_attention_with_sink returned: CUDA memory = {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
             attn_weights = None
         attn_output = attn_output.reshape(*input_shape, -1).contiguous()
-        print(f"[UNSLOTH DEBUG] After reshape/contiguous: CUDA memory = {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
         attn_output = self.o_proj(attn_output)
-        print(f"[UNSLOTH DEBUG] After o_proj: CUDA memory = {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
         return attn_output, attn_weights
     pass
 
@@ -1154,14 +1141,6 @@ def patch_GptOssModel():
         cache_position: Optional[torch.LongTensor] = None,
         **kwargs: KWARGS_TYPE,
     ) -> MoeModelOutputWithPast:
-        # Debug memory at very start of forward
-        if not self.training:
-            import sys
-            print(f"[UNSLOTH DEBUG] FORWARD START: CUDA memory allocated: {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
-            print(f"[UNSLOTH DEBUG] FORWARD START: CUDA memory reserved: {torch.cuda.memory_reserved() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
-            print(f"[UNSLOTH DEBUG] FORWARD START: torch.is_grad_enabled() = {torch.is_grad_enabled()}", file=sys.stderr, flush=True)
-            print(f"[UNSLOTH DEBUG] FORWARD START: torch.is_inference_mode_enabled() = {torch.is_inference_mode_enabled()}", file=sys.stderr, flush=True)
-
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError("You must specify exactly one of input_ids or inputs_embeds")
 
@@ -1177,9 +1156,6 @@ def patch_GptOssModel():
         if not self.training:
             inputs_embeds = inputs_embeds.detach()
             inputs_embeds.requires_grad_(False)
-            if not self.training:
-                import sys
-                print(f"[UNSLOTH DEBUG] After detach: inputs_embeds.requires_grad = {inputs_embeds.requires_grad}", file=sys.stderr, flush=True)
 
         if cache_position is None:
             past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
@@ -1243,7 +1219,6 @@ def patch_GptOssModel():
             hidden_states = rms_layernorm_forward(self.norm, hidden_states)
         else:
             # Eval/training path
-            import sys
             import gc
             if not self.training:
                 # Aggressive memory cleanup before eval to prevent OOM
@@ -1252,11 +1227,6 @@ def patch_GptOssModel():
                 # Try to clear torch.compile cache
                 if hasattr(torch.compiler, "reset"):
                     torch.compiler.reset()
-                print(f"[UNSLOTH DEBUG] EVAL mode: batch_size={bsz}, seq_len={qlen}, use_cache={use_cache}", file=sys.stderr, flush=True)
-                print(f"[UNSLOTH DEBUG] EVAL: Total CUDA memory allocated: {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
-                print(f"[UNSLOTH DEBUG] EVAL: Total CUDA memory reserved: {torch.cuda.memory_reserved() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
-                print(f"[UNSLOTH DEBUG] EVAL: memory allocated before layers: {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
-                print(f"[UNSLOTH DEBUG] EVAL: memory reserved before layers: {torch.cuda.memory_reserved() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
 
             # Wrap eval in inference_mode to disable gradient tracking
             if not self.training:
@@ -1285,12 +1255,6 @@ def patch_GptOssModel():
                 # Exit inference mode
                 inference_mode_ctx.__exit__(None, None, None)
                 torch.set_grad_enabled(_prev_grad_state)
-
-            if not self.training:
-                print(f"[UNSLOTH DEBUG] EVAL: memory allocated after layers: {torch.cuda.memory_allocated() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
-                print(f"[UNSLOTH DEBUG] EVAL: memory reserved after layers: {torch.cuda.memory_reserved() / 1024**3:.2f} GB", file=sys.stderr, flush=True)
-                print(f"[UNSLOTH DEBUG] EVAL: torch.is_inference_mode_enabled() = {torch.is_inference_mode_enabled()}", file=sys.stderr, flush=True)
-                print(f"[UNSLOTH DEBUG] EVAL: hidden_states.requires_grad = {hidden_states.requires_grad}", file=sys.stderr, flush=True)
         # Fix float16 / float32 mismatching
         hidden_states = hidden_states.to(inputs_embeds.dtype)
 
@@ -1303,12 +1267,6 @@ def patch_GptOssModel():
             # Force requires_grad to False to prevent any gradient computation
             if hidden_states.requires_grad:
                 hidden_states.requires_grad_(False)
-            import sys
-            bsz_final = hidden_states.shape[0]
-            seq_final = hidden_states.shape[1]
-            print(f"[UNSLOTH DEBUG] EVAL: Before return, batch_size={bsz_final}, seq_len={seq_final}", file=sys.stderr, flush=True)
-            print(f"[UNSLOTH DEBUG] EVAL: Before return, hidden_states.requires_grad = {hidden_states.requires_grad}", file=sys.stderr, flush=True)
-            print(f"[UNSLOTH DEBUG] EVAL: Before return, hidden_states.is_leaf = {hidden_states.is_leaf}", file=sys.stderr, flush=True)
 
         return process_return(MoeModelOutputWithPast, {
             "last_hidden_state" : hidden_states,
