@@ -988,11 +988,17 @@ def convert_to_gguf(
                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                 print(result.stdout)
             else:
-                subprocess.run(command, shell=True, check=True, capture_output=True)
+                subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
         except subprocess.CalledProcessError as e:
-            if print_output and hasattr(e, 'stdout') and e.stdout:
-                print(e.stdout)
-            raise RuntimeError(f"Unsloth: Failed to convert {description} to GGUF: {e}")
+            # Always print error output when conversion fails, regardless of print_output setting
+            error_msg = f"Unsloth: Failed to convert {description} to GGUF: {e}"
+            if hasattr(e, 'stdout') and e.stdout:
+                print(f"\n=== Conversion stdout ===\n{e.stdout}")
+                error_msg += f"\nStdout: {e.stdout}"
+            if hasattr(e, 'stderr') and e.stderr:
+                print(f"\n=== Conversion stderr ===\n{e.stderr}")
+                error_msg += f"\nStderr: {e.stderr}"
+            raise RuntimeError(error_msg)
 
         # Simple validation using native Python
         if not os.path.exists(output_file):
