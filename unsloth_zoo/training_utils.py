@@ -91,7 +91,7 @@ pass
 def prepare_model_for_training(
     model                      : Any,
     use_gradient_checkpointing : Optional = "unsloth",
-    use_reentrant              : Optional[bool] = True,
+    use_reentrant              : Optional[bool] = False,  # Changed default to False for torch.compile compatibility
     full_finetuning            : Optional[bool] = False,
     train_layernorms           : Optional[bool] = False,
     train_embedding            : Optional[bool] = False,

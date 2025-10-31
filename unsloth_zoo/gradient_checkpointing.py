@@ -105,7 +105,7 @@ pass
 def prepare_n_gradient_checkpoints(
     model                 : Any,
     layers_per_checkpoint : Optional[Union[str, int]] = "sqrt",
-    use_reentrant         : Optional[bool] = True,
+    use_reentrant         : Optional[bool] = False,  # Changed default to False for torch.compile compatibility
 ) -> None:
     """
     Calculates where to place the gradient checkpoints given n_layers.
@@ -131,8 +131,16 @@ def prepare_n_gradient_checkpoints(
         raise TypeError("`model` or `model.model` does not have attribute `layers`. Are you sure this is a model?")
     pass
 
-    if use_reentrant is False:
-        use_reentrant = True
+    # CRITICAL FIX: Respect user's use_reentrant=False setting!
+    # The old code was forcing use_reentrant=True, which prevents torch.compile
+    # and causes flex_attention to fall back to eager mode (30+ GB OOM)
+    # if use_reentrant is False:
+    #     use_reentrant = True
+    # pass
+
+    # Now properly use user's setting or default to False for better compilation
+    if use_reentrant is None:
+        use_reentrant = False  # Default to False to enable torch.compile
     pass
 
     n_layers = len(_model.layers)
@@ -211,7 +219,10 @@ pass
 # pass
 
 
-@torch._disable_dynamo
+# IMPORTANT: @torch._disable_dynamo REMOVED to allow flex_attention compilation
+# The decorator was preventing torch.compile from working, causing flex_attention
+# to fall back to eager mode which materializes 30+ GB attention matrices -> OOM
+# @torch._disable_dynamo
 def unsloth_gradient_checkpoint(function, *args, use_reentrant = None, **kwargs):
     return Unsloth_Gradient_Checkpointer.apply(function, *args)
 pass
@@ -619,7 +630,8 @@ from torch.utils.checkpoint import (
     _checkpoint_without_reentrant_generator,
     noop_context_fn,
 )
-@torch._disable_dynamo
+# IMPORTANT: @torch._disable_dynamo REMOVED to allow flex_attention compilation
+# @torch._disable_dynamo
 def unsloth_checkpoint(
     function,
     *args,
@@ -818,7 +830,8 @@ def unpatch_unsloth_smart_gradient_checkpointing():
 pass
 
 
-@torch._disable_dynamo
+# IMPORTANT: @torch._disable_dynamo REMOVED to allow flex_attention compilation
+# @torch._disable_dynamo
 def unsloth_offloaded_gradient_checkpoint(function, *args, use_reentrant = None, **kwargs):
     global CPU_BUFFERS
     if len(CPU_BUFFERS) == 0:
