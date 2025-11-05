@@ -41,10 +41,11 @@ import re
 
 def patch_bitsandbytes_linear4bit_forward():
     # Fixes torch.compile complaining about multiple things
-    print("🔧 CRITICAL: PATCH VERSION 2025-11-05-17:56 - Attempting to patch bitsandbytes Linear4bit forward...")
+    print("🔧 CRITICAL: COMPREHENSIVE PATCH VERSION 2025-11-05-20:15 - Attempting to patch ALL bitsandbytes Linear4bit forward...")
     try:
         import bitsandbytes
-        bitsandbytes.nn.modules.Linear4bit
+        import bitsandbytes.nn
+        import bitsandbytes.nn.modules
         fix_4bit_weight_quant_state_from_module = bitsandbytes.nn.modules.fix_4bit_weight_quant_state_from_module
         print("🔧 CRITICAL: Successfully imported bitsandbytes modules")
     except Exception as e:
@@ -69,30 +70,38 @@ def patch_bitsandbytes_linear4bit_forward():
             x = x.to(self.compute_dtype)
 
         bias = None if self.bias is None else self.bias.to(self.compute_dtype)
-        # ** Errors out in torch.compile
-        # weight = self.weight.t() if self.weight.dim() == 2 else self.weight
-
-        # Cannot do .t() on Params4bit, instead do it on torch.Tensor  
-        # Fix dynamo compilation issue by avoiding .data attribute access
-        print(f"🔧 USING FIXED BITSANDBYTES FORWARD VERSION 2025-11-05-18:25 with dynamo-safe transpose")
         
-        # The original issue was: weight = self.weight.data.t()
+        # FIX: The original code that fails:
+        # weight = self.weight.data.t() if self.weight.dim() == 2 else self.weight.data
         # The .data attribute access causes dynamo compilation to fail
-        # We need to transpose but avoid .data - use direct transpose on the Params4bit
+        print(f"🔧 USING COMPREHENSIVE BITSANDBYTES FORWARD VERSION 2025-11-05-20:15 DYNAMO-SAFE")
+        
+        # Use the weight directly without .data attribute access
         if self.weight.dim() == 2:
-            # Use .t() directly on the weight without accessing .data
-            # This should be dynamo-safe since we're not accessing .data attribute
             weight = self.weight.t()
         else:
             weight = self.weight
 
         return bitsandbytes.matmul_4bit(x, weight, bias=bias, quant_state=self.weight.quant_state).to(inp_dtype)
 
-    patch_function(bitsandbytes.nn.modules.Linear4bit, "forward", forward)
-    try:
-        patch_function(bitsandbytes.nn.Linear4bit, "forward", forward)
-    except:
-        pass
+    # Patch ALL possible locations where Linear4bit might be used
+    locations_to_patch = [
+        ("bitsandbytes.nn.modules.Linear4bit", bitsandbytes.nn.modules.Linear4bit),
+        ("bitsandbytes.nn.Linear4bit", bitsandbytes.nn.Linear4bit),
+        ("bitsandbytes.Linear4bit", getattr(bitsandbytes, 'Linear4bit', None)),
+    ]
+    
+    patched_count = 0
+    for location_name, location_class in locations_to_patch:
+        if location_class is not None:
+            try:
+                patch_function(location_class, "forward", forward)
+                print(f"🔧 CRITICAL: Successfully patched {location_name}")
+                patched_count += 1
+            except Exception as e:
+                print(f"🔧 CRITICAL: Failed to patch {location_name}: {e}")
+    
+    print(f"🔧 CRITICAL: Patched {patched_count} Linear4bit locations")
 pass
 print(f"🔧 CRITICAL: Adding bitsandbytes patch to TEMPORARY_PATCHES list (current length: {len(TEMPORARY_PATCHES)})")
 TEMPORARY_PATCHES.append(patch_bitsandbytes_linear4bit_forward)
