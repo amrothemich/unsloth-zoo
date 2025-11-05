@@ -74,12 +74,17 @@ def patch_bitsandbytes_linear4bit_forward():
 
         # Cannot do .t() on Params4bit, instead do it on torch.Tensor  
         # Fix dynamo compilation issue by avoiding .data attribute access
-        print(f"🔧 USING FIXED BITSANDBYTES FORWARD VERSION 2025-11-05-18:15 with simple fix")
+        print(f"🔧 USING FIXED BITSANDBYTES FORWARD VERSION 2025-11-05-18:25 with dynamo-safe transpose")
         
         # The original issue was: weight = self.weight.data.t()
         # The .data attribute access causes dynamo compilation to fail
-        # Simple fix: use the weight as-is since bitsandbytes should handle dimensions
-        weight = self.weight
+        # We need to transpose but avoid .data - use direct transpose on the Params4bit
+        if self.weight.dim() == 2:
+            # Use .t() directly on the weight without accessing .data
+            # This should be dynamo-safe since we're not accessing .data attribute
+            weight = self.weight.t()
+        else:
+            weight = self.weight
 
         return bitsandbytes.matmul_4bit(x, weight, bias=bias, quant_state=self.weight.quant_state).to(inp_dtype)
 
