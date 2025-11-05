@@ -18,15 +18,19 @@ from .common import TEMPORARY_PATCHES
 from .utils import patch_function
 import traceback
 import gc
+import os
+import datetime
+import io
+import sys
 
 def patch_comprehensive_cache_debugging():
     """
     Comprehensive cache debugging to track memory corruption progression
+    Logs to file specified by UNSLOTH_CACHE_DEBUG_LOG_DIR environment variable
     """
     try:
         from transformers.cache_utils import SlidingWindowLayer
         import torch
-        import sys
         
         # Global counter and state tracking
         if not hasattr(patch_comprehensive_cache_debugging, 'call_count'):
@@ -34,16 +38,47 @@ def patch_comprehensive_cache_debugging():
             patch_comprehensive_cache_debugging.failure_count = 0
             patch_comprehensive_cache_debugging.last_successful_state = {}
             patch_comprehensive_cache_debugging.device_history = []
+            
+            # Set up logging
+            log_dir = os.environ.get('UNSLOTH_CACHE_DEBUG_LOG_DIR', '.')
+            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            log_filename = f"unsloth_cache_debug_{timestamp}.log"
+            patch_comprehensive_cache_debugging.log_path = os.path.join(log_dir, log_filename)
+            
+            # Create log directory if needed
+            os.makedirs(log_dir, exist_ok=True)
+            
+            # Initial log message
+            with open(patch_comprehensive_cache_debugging.log_path, 'w') as f:
+                f.write(f"Unsloth Cache Debug Log - Started at {datetime.datetime.now()}\n")
+                f.write(f"Log path: {patch_comprehensive_cache_debugging.log_path}\n")
+                f.write(f"Set UNSLOTH_CACHE_DEBUG_LOG_DIR env var to change log location\n")
+                f.write("="*80 + "\n\n")
+            
+            print(f"📝 Unsloth cache debug logging to: {patch_comprehensive_cache_debugging.log_path}")
         
         original_update = SlidingWindowLayer.update
+        
+        def log_debug(message):
+            """Helper to write to log file"""
+            with open(patch_comprehensive_cache_debugging.log_path, 'a') as f:
+                f.write(message + '\n')
+                f.flush()  # Ensure immediate write
         
         def comprehensive_debug_update(self, key_states, value_states, cache_kwargs):
             call_count = patch_comprehensive_cache_debugging.call_count
             patch_comprehensive_cache_debugging.call_count += 1
             
-            print(f"\n{'='*80}")
-            print(f"🔍 CACHE DEBUG #{call_count} - SlidingWindowLayer.update")
-            print(f"{'='*80}")
+            # Buffer for all debug output
+            debug_buffer = io.StringIO()
+            
+            def debug_print(msg=""):
+                """Print to buffer instead of stdout"""
+                debug_buffer.write(str(msg) + '\n')
+            
+            debug_print(f"\n{'='*80}")
+            debug_print(f"🔍 CACHE DEBUG #{call_count} - SlidingWindowLayer.update")
+            debug_print(f"{'='*80}")
             
             # Get calling context
             stack = traceback.extract_stack()
@@ -54,64 +89,64 @@ def patch_comprehensive_cache_debugging():
                     if len(calling_context) >= 5:  # Show last 5 relevant frames
                         break
             
-            print("📍 Call Stack:")
+            debug_print("📍 Call Stack:")
             for ctx in calling_context:
-                print(ctx)
+                debug_print(ctx)
             
             # Detailed state inspection
-            print(f"\n📊 State Information:")
-            print(f"  self.device: {getattr(self, 'device', 'MISSING')}")
-            print(f"  self.device type: {type(getattr(self, 'device', None))}")
-            print(f"  self.device id: {id(getattr(self, 'device', None))}")
-            print(f"  key_states.device: {key_states.device}")
-            print(f"  key_states.shape: {key_states.shape}")
-            print(f"  key_states.dtype: {key_states.dtype}")
-            print(f"  key_states.is_contiguous: {key_states.is_contiguous()}")
+            debug_print(f"\n📊 State Information:")
+            debug_print(f"  self.device: {getattr(self, 'device', 'MISSING')}")
+            debug_print(f"  self.device type: {type(getattr(self, 'device', None))}")
+            debug_print(f"  self.device id: {id(getattr(self, 'device', None))}")
+            debug_print(f"  key_states.device: {key_states.device}")
+            debug_print(f"  key_states.shape: {key_states.shape}")
+            debug_print(f"  key_states.dtype: {key_states.dtype}")
+            debug_print(f"  key_states.is_contiguous: {key_states.is_contiguous()}")
             
             # Memory state
             if torch.cuda.is_available():
-                print(f"\n💾 GPU Memory State:")
-                print(f"  Allocated: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
-                print(f"  Reserved: {torch.cuda.memory_reserved() / 1e9:.2f} GB")
-                print(f"  Max Allocated: {torch.cuda.max_memory_allocated() / 1e9:.2f} GB")
+                debug_print(f"\n💾 GPU Memory State:")
+                debug_print(f"  Allocated: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
+                debug_print(f"  Reserved: {torch.cuda.memory_reserved() / 1e9:.2f} GB")
+                debug_print(f"  Max Allocated: {torch.cuda.max_memory_allocated() / 1e9:.2f} GB")
                 
                 # Check for memory pressure
                 total_memory = torch.cuda.get_device_properties(0).total_memory
                 free_memory = total_memory - torch.cuda.memory_allocated()
-                print(f"  Free Memory: {free_memory / 1e9:.2f} GB ({free_memory/total_memory*100:.1f}%)")
+                debug_print(f"  Free Memory: {free_memory / 1e9:.2f} GB ({free_memory/total_memory*100:.1f}%)")
             
             # Cache state inspection
-            print(f"\n📦 Cache State:")
+            debug_print(f"\n📦 Cache State:")
             if hasattr(self, 'keys'):
                 if self.keys is not None:
-                    print(f"  Keys shape: {self.keys.shape}")
-                    print(f"  Keys device: {self.keys.device}")
-                    print(f"  Keys dtype: {self.keys.dtype}")
-                    print(f"  Keys contiguous: {self.keys.is_contiguous()}")
-                    print(f"  Keys data_ptr: {self.keys.data_ptr()}")
+                    debug_print(f"  Keys shape: {self.keys.shape}")
+                    debug_print(f"  Keys device: {self.keys.device}")
+                    debug_print(f"  Keys dtype: {self.keys.dtype}")
+                    debug_print(f"  Keys contiguous: {self.keys.is_contiguous()}")
+                    debug_print(f"  Keys data_ptr: {self.keys.data_ptr()}")
                 else:
-                    print(f"  ❌ CRITICAL: self.keys is None!")
+                    debug_print(f"  ❌ CRITICAL: self.keys is None!")
             else:
-                print(f"  ❌ CRITICAL: self.keys attribute missing!")
+                debug_print(f"  ❌ CRITICAL: self.keys attribute missing!")
                 
             if hasattr(self, 'values'):
                 if self.values is not None:
-                    print(f"  Values shape: {self.values.shape}")
-                    print(f"  Values device: {self.values.device}")
+                    debug_print(f"  Values shape: {self.values.shape}")
+                    debug_print(f"  Values device: {self.values.device}")
                 else:
-                    print(f"  ❌ CRITICAL: self.values is None!")
+                    debug_print(f"  ❌ CRITICAL: self.values is None!")
             else:
-                print(f"  ❌ CRITICAL: self.values attribute missing!")
+                debug_print(f"  ❌ CRITICAL: self.values attribute missing!")
                 
             # Check for NaN or Inf if cache exists
             if hasattr(self, 'keys') and self.keys is not None:
                 try:
                     has_nan = torch.isnan(self.keys).any().item()
                     has_inf = torch.isinf(self.keys).any().item()
-                    print(f"  Keys has NaN: {has_nan}")
-                    print(f"  Keys has Inf: {has_inf}")
+                    debug_print(f"  Keys has NaN: {has_nan}")
+                    debug_print(f"  Keys has Inf: {has_inf}")
                 except Exception as e:
-                    print(f"  ❌ Cannot check NaN/Inf: {e}")
+                    debug_print(f"  ❌ Cannot check NaN/Inf: {e}")
             
             # Device history tracking
             current_device = getattr(self, 'device', None)
@@ -124,78 +159,78 @@ def patch_comprehensive_cache_debugging():
             # Check for device issues
             device_ok = True
             if not hasattr(self, 'device'):
-                print(f"\n🔧 CRITICAL: self.device missing! Setting to key_states.device")
+                debug_print(f"\n🔧 CRITICAL: self.device missing! Setting to key_states.device")
                 self.device = key_states.device
                 device_ok = False
             elif self.device is None:
-                print(f"\n🔧 CRITICAL: self.device is None! Setting to key_states.device")
+                debug_print(f"\n🔧 CRITICAL: self.device is None! Setting to key_states.device")
                 self.device = key_states.device
                 device_ok = False
             elif isinstance(self.device, int):
-                print(f"\n🔧 Converting integer device {self.device} to cuda:{self.device}")
+                debug_print(f"\n🔧 Converting integer device {self.device} to cuda:{self.device}")
                 self.device = f"cuda:{self.device}"
                 device_ok = False
             
             # Test the problematic operation
-            print(f"\n🧪 Testing index tensor creation...")
+            debug_print(f"\n🧪 Testing index tensor creation...")
             test_success = False
             try:
                 test_index = torch.tensor([-1], dtype=int, device=self.device)
-                print(f"  ✅ Test index creation successful")
+                debug_print(f"  ✅ Test index creation successful")
                 test_success = True
                 
                 # Additional memory access test
                 if hasattr(self, 'keys') and self.keys is not None:
-                    print(f"  🧪 Testing cache memory access...")
+                    debug_print(f"  🧪 Testing cache memory access...")
                     _ = self.keys[0, 0, 0, 0].item()  # Try to access first element
-                    print(f"  ✅ Cache memory access successful")
+                    debug_print(f"  ✅ Cache memory access successful")
                     
                     # Test roll operation
-                    print(f"  🧪 Testing roll operation...")
+                    debug_print(f"  🧪 Testing roll operation...")
                     _ = self.keys.roll(-1, dims=-2)
-                    print(f"  ✅ Roll operation successful")
+                    debug_print(f"  ✅ Roll operation successful")
                     
             except Exception as e:
-                print(f"  ❌ Test failed: {type(e).__name__}: {e}")
+                debug_print(f"  ❌ Test failed: {type(e).__name__}: {e}")
                 patch_comprehensive_cache_debugging.failure_count += 1
                 
                 if "illegal memory access" in str(e):
-                    print(f"\n🚨 MEMORY CORRUPTION DETECTED!")
-                    print(f"  This is failure #{patch_comprehensive_cache_debugging.failure_count}")
-                    print(f"  Total calls before failure: {call_count}")
+                    debug_print(f"\n🚨 MEMORY CORRUPTION DETECTED!")
+                    debug_print(f"  This is failure #{patch_comprehensive_cache_debugging.failure_count}")
+                    debug_print(f"  Total calls before failure: {call_count}")
                     
                     # Compare with last successful state
                     if patch_comprehensive_cache_debugging.last_successful_state:
-                        print(f"\n📊 Comparison with last successful state:")
+                        debug_print(f"\n📊 Comparison with last successful state:")
                         last = patch_comprehensive_cache_debugging.last_successful_state
-                        print(f"  Last device: {last.get('device')} -> Current: {self.device}")
-                        print(f"  Last allocated: {last.get('allocated', 0):.2f} GB -> Current: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
-                        print(f"  Memory increase: {(torch.cuda.memory_allocated() - last.get('allocated', 0)) / 1e9:.2f} GB")
+                        debug_print(f"  Last device: {last.get('device')} -> Current: {self.device}")
+                        debug_print(f"  Last allocated: {last.get('allocated', 0):.2f} GB -> Current: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
+                        debug_print(f"  Memory increase: {(torch.cuda.memory_allocated() - last.get('allocated', 0)) / 1e9:.2f} GB")
                     
                     # Show recent device history
-                    print(f"\n📜 Recent device history:")
+                    debug_print(f"\n📜 Recent device history:")
                     for entry in patch_comprehensive_cache_debugging.device_history[-5:]:
-                        print(f"  Call #{entry['call']}: device={entry['device']}, key_device={entry['key_device']}")
+                        debug_print(f"  Call #{entry['call']}: device={entry['device']}, key_device={entry['key_device']}")
                     
                     # Emergency fix attempt
-                    print(f"\n🚑 Attempting emergency fixes...")
+                    debug_print(f"\n🚑 Attempting emergency fixes...")
                     
                     # Force garbage collection
                     gc.collect()
                     torch.cuda.empty_cache()
-                    print(f"  ✅ Forced garbage collection")
+                    debug_print(f"  ✅ Forced garbage collection")
                     
                     # Reset device
                     self.device = key_states.device
-                    print(f"  ✅ Reset device to {self.device}")
+                    debug_print(f"  ✅ Reset device to {self.device}")
                     
                     # Try again
                     try:
                         test_index = torch.tensor([-1], dtype=int, device=self.device)
-                        print(f"  ✅ Emergency fix successful!")
+                        debug_print(f"  ✅ Emergency fix successful!")
                         test_success = True
                     except Exception as e2:
-                        print(f"  ❌ Emergency fix failed: {e2}")
+                        debug_print(f"  ❌ Emergency fix failed: {e2}")
             
             # Store successful state
             if test_success and device_ok:
@@ -207,23 +242,42 @@ def patch_comprehensive_cache_debugging():
                 }
             
             # Call original update
-            print(f"\n🔄 Calling original update method...")
+            debug_print(f"\n🔄 Calling original update method...")
+            result = None
+            update_exception = None
             try:
                 result = original_update(self, key_states, value_states, cache_kwargs)
-                print(f"✅ Original update successful")
-                return result
+                debug_print(f"✅ Original update successful")
             except Exception as e:
-                print(f"❌ Original update failed: {type(e).__name__}: {e}")
-                print(f"\n🔍 Full traceback:")
-                traceback.print_exc()
+                update_exception = e
+                debug_print(f"❌ Original update failed: {type(e).__name__}: {e}")
+                debug_print(f"\n🔍 Full traceback:")
+                
+                # Capture traceback to buffer
+                tb_buffer = io.StringIO()
+                traceback.print_exc(file=tb_buffer)
+                debug_print(tb_buffer.getvalue())
                 
                 # Last resort: return inputs unchanged
-                print(f"🚨 CRITICAL: Returning inputs unchanged as last resort")
-                return key_states, value_states
+                debug_print(f"🚨 CRITICAL: Returning inputs unchanged as last resort")
+                result = key_states, value_states
+            
+            # Write all debug output to log file
+            log_debug(debug_buffer.getvalue())
+            
+            # Only print summary to console
+            if update_exception or not test_success:
+                print(f"❌ Cache debug #{call_count}: {'FAILED' if update_exception else 'WARNING'} - see {patch_comprehensive_cache_debugging.log_path}")
+            elif call_count % 100 == 0:  # Print progress every 100 calls
+                print(f"✅ Cache debug #{call_count}: OK - logging to {patch_comprehensive_cache_debugging.log_path}")
+            
+            return result
         
         # Apply the patch
         SlidingWindowLayer.update = comprehensive_debug_update
-        print("✅ Applied comprehensive cache debugging patch with memory corruption tracking")
+        print(f"✅ Applied comprehensive cache debugging patch with file logging")
+        print(f"📝 Logs will be written to: {patch_comprehensive_cache_debugging.log_path}")
+        print(f"💡 Set UNSLOTH_CACHE_DEBUG_LOG_DIR env var to change log directory")
         
     except Exception as e:
         print(f"❌ Failed to apply comprehensive cache debugging patch: {e}")
