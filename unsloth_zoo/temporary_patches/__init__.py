@@ -16,10 +16,10 @@
 
 
 from .common import *
+from .bitsandbytes import *  # Import bitsandbytes patches first
 from .gemma import *
 from .misc import *
 from .gemma3n import *
 from .gpt_oss import *
 from .pixtral import *
 from .mxfp4 import *
-from .bitsandbytes import *

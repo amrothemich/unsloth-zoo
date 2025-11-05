@@ -540,7 +540,18 @@ no_combo_fused_torch_compile_options = get_torch_compile_options(
     logging = UNSLOTH_ENABLE_LOGGING,
 )
 
-@_torch_compile(dynamic = None, fullgraph = True, options = fused_torch_compile_options)
+# Check if using 4bit quantization to conditionally disable compilation
+# Simpler approach: if bitsandbytes is imported, assume we need to disable compilation
+try:
+    import bitsandbytes as bnb
+    # If bitsandbytes is available, disable compilation for MoE functions
+    from torch._dynamo import disable as _dynamo_disable
+    _moe_compile_decorator = _dynamo_disable
+except ImportError:
+    # No bitsandbytes, use normal compilation
+    _moe_compile_decorator = _torch_compile(dynamic = None, fullgraph = True, options = fused_torch_compile_options)
+
+@_moe_compile_decorator
 def moe_forward_inference(self, hidden_states):
     """Torch compile for forward inference path only with CUDAGraphs"""
     # Router
@@ -583,7 +594,16 @@ def moe_router_forward(self, hidden_states):
 pass
 
 # Combo Kernels errors with InductorError: AttributeError: 'NullKernelHandler' object has no attribute 'index_to_str'
-@_torch_compile(dynamic = None, fullgraph = True, options = no_combo_fused_torch_compile_options)
+# Use same approach for bf16 version
+try:
+    import bitsandbytes as bnb
+    # If bitsandbytes is available, disable compilation
+    _moe_bf16_compile_decorator = _dynamo_disable
+except ImportError:
+    # No bitsandbytes, use normal compilation
+    _moe_bf16_compile_decorator = _torch_compile(dynamic = None, fullgraph = True, options = no_combo_fused_torch_compile_options)
+
+@_moe_bf16_compile_decorator
 def moe_forward_inference_bf16(self, hidden_states):
     router_scores, router_indices = moe_router_forward(self.router, hidden_states)
     routing_weights = router_scores
