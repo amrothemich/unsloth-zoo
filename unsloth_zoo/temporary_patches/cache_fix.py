@@ -39,6 +39,12 @@ def patch_sliding_window_cache_device_fix():
             # Original SlidingWindowLayer.update logic with device fix
             import torch
             
+            # CRITICAL: Check if cache is initialized
+            if not hasattr(self, 'keys') or self.keys is None:
+                # Cache not initialized - this might be the first call
+                # Return the input states as-is (this is what the original does)
+                return key_states, value_states
+            
             # Check if we need to slide the cache
             if key_states.shape[-2] > 1:
                 # Multiple new tokens - slide by the number of new tokens minus 1

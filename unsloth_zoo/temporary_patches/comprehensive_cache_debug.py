@@ -81,15 +81,30 @@ def patch_comprehensive_cache_debugging():
                 print(f"  Free Memory: {free_memory / 1e9:.2f} GB ({free_memory/total_memory*100:.1f}%)")
             
             # Cache state inspection
-            if hasattr(self, 'keys') and self.keys is not None:
-                print(f"\n📦 Cache State:")
-                print(f"  Keys shape: {self.keys.shape}")
-                print(f"  Keys device: {self.keys.device}")
-                print(f"  Keys dtype: {self.keys.dtype}")
-                print(f"  Keys contiguous: {self.keys.is_contiguous()}")
-                print(f"  Keys data_ptr: {self.keys.data_ptr()}")
+            print(f"\n📦 Cache State:")
+            if hasattr(self, 'keys'):
+                if self.keys is not None:
+                    print(f"  Keys shape: {self.keys.shape}")
+                    print(f"  Keys device: {self.keys.device}")
+                    print(f"  Keys dtype: {self.keys.dtype}")
+                    print(f"  Keys contiguous: {self.keys.is_contiguous()}")
+                    print(f"  Keys data_ptr: {self.keys.data_ptr()}")
+                else:
+                    print(f"  ❌ CRITICAL: self.keys is None!")
+            else:
+                print(f"  ❌ CRITICAL: self.keys attribute missing!")
                 
-                # Check for NaN or Inf
+            if hasattr(self, 'values'):
+                if self.values is not None:
+                    print(f"  Values shape: {self.values.shape}")
+                    print(f"  Values device: {self.values.device}")
+                else:
+                    print(f"  ❌ CRITICAL: self.values is None!")
+            else:
+                print(f"  ❌ CRITICAL: self.values attribute missing!")
+                
+            # Check for NaN or Inf if cache exists
+            if hasattr(self, 'keys') and self.keys is not None:
                 try:
                     has_nan = torch.isnan(self.keys).any().item()
                     has_inf = torch.isinf(self.keys).any().item()
