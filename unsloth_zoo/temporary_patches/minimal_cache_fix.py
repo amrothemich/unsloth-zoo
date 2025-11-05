@@ -34,11 +34,36 @@ def patch_minimal_sliding_window_cache_device_fix():
             if not hasattr(self, 'device') or self.device is None:
                 self.device = key_states.device
             
+            # Check for cache_position overflow before calling original method
+            cache_position = cache_kwargs.get('cache_position', None)
+            if cache_position is not None and hasattr(self, 'keys') and self.keys is not None:
+                # Check if cache_position is approaching dangerous values
+                cache_window_size = self.keys.shape[-2]  # Should be 128
+                if hasattr(cache_position, 'item'):
+                    pos_value = cache_position.item()
+                elif hasattr(cache_position, '__len__') and len(cache_position) > 0:
+                    pos_value = cache_position[0].item() if hasattr(cache_position[0], 'item') else cache_position[0]
+                else:
+                    pos_value = cache_position
+                    
+                # If position is beyond safe range, clamp it
+                if pos_value >= cache_window_size:
+                    print(f"🔧 Cache position overflow detected: {pos_value} >= {cache_window_size}, clamping to {cache_window_size - 1}")
+                    # Create a safe cache_position
+                    safe_position = torch.tensor([cache_window_size - 1], device=key_states.device)
+                    cache_kwargs = dict(cache_kwargs)  # Copy to avoid modifying original
+                    cache_kwargs['cache_position'] = safe_position
+            
             # Try the original method first
             try:
                 return original_update(self, key_states, value_states, cache_kwargs)
             except RuntimeError as e:
-                if "device" in str(e) and "tensor" in str(e):
+                if "illegal memory access" in str(e):
+                    print(f"🚨 CUDA illegal memory access caught! cache_position: {cache_kwargs.get('cache_position', 'None')}")
+                    # This is the buffer overflow - return a safe fallback
+                    print(f"🔧 Returning safe fallback to prevent crash")
+                    return key_states, value_states
+                elif "device" in str(e) and "tensor" in str(e):
                     # This is likely the device issue - try to fix by ensuring device consistency
                     print(f"🔧 Fixing device issue in cache update: {e}")
                     

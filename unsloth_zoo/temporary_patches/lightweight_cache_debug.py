@@ -73,6 +73,11 @@ def patch_lightweight_cache_debugging():
                         f.write(f"Call #{call_count}: Cache INITIALIZED (id:{cache_id}) - shape: {self.keys.shape}\n")
                 
                 # Special logging around the critical call #2595
+                # Also log compiler behavior messages
+                if call_count == 1:
+                    with open(patch_lightweight_cache_debugging.log_path, 'a') as f:
+                        f.write("🔍 WATCHING FOR TORCH.COMPILE MESSAGES AROUND FAILURE\n\n")
+                
                 if 2590 <= call_count <= 2600:
                     with open(patch_lightweight_cache_debugging.log_path, 'a') as f:
                         f.write(f"\n🔍 CRITICAL RANGE - Call #{call_count}:\n")
