@@ -586,7 +586,7 @@ pass
 try:
     import bitsandbytes as bnb
     # If bitsandbytes is available, disable compilation
-    _moe_bf16_compile_decorator = _dynamo_disable
+    _moe_bf16_compile_decorator = torch.compiler.disable
 except ImportError:
     # No bitsandbytes, use normal compilation
     _moe_bf16_compile_decorator = _torch_compile(dynamic = None, fullgraph = True, options = no_combo_fused_torch_compile_options)
