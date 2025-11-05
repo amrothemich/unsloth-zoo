@@ -54,15 +54,36 @@ def patch_lightweight_cache_debugging():
             call_count = patch_lightweight_cache_debugging.call_count
             patch_lightweight_cache_debugging.call_count += 1
             
+            # Track cache lifecycle - detect when it should initialize vs when it's stuck
+            cache_was_none = not hasattr(self, 'keys') or self.keys is None
+            cache_id = id(self)
+            
             # Minimal tracking - just call the original method and catch exceptions
             try:
                 result = original_update(self, key_states, value_states, cache_kwargs)
                 
+                # Check if cache state changed after the call
+                cache_is_none_after = not hasattr(self, 'keys') or self.keys is None
+                
+                # Log cache lifecycle changes
+                if cache_was_none and not cache_is_none_after:
+                    # Cache just got initialized!
+                    print(f"🎉 Cache #{call_count}: Cache INITIALIZED (id:{cache_id}) - shape: {self.keys.shape}")
+                    with open(patch_lightweight_cache_debugging.log_path, 'a') as f:
+                        f.write(f"Call #{call_count}: Cache INITIALIZED (id:{cache_id}) - shape: {self.keys.shape}\n")
+                
+                elif not cache_was_none and cache_is_none_after:
+                    # Cache got reset/cleared - this is suspicious!
+                    print(f"⚠️  Cache #{call_count}: Cache RESET TO NONE (id:{cache_id}) - this might be a problem!")
+                    with open(patch_lightweight_cache_debugging.log_path, 'a') as f:
+                        f.write(f"Call #{call_count}: Cache RESET TO NONE (id:{cache_id}) - SUSPICIOUS!\n")
+                
                 # Periodic progress (minimal overhead)
                 if call_count % 10000 == 0:
-                    print(f"✅ Cache #{call_count}: OK")
+                    cache_status = "None" if cache_is_none_after else f"Initialized(shape:{self.keys.shape})"
+                    print(f"✅ Cache #{call_count}: OK - Cache: {cache_status}")
                     with open(patch_lightweight_cache_debugging.log_path, 'a') as f:
-                        f.write(f"Progress: Call #{call_count} - OK\n")
+                        f.write(f"Progress: Call #{call_count} - Cache: {cache_status}\n")
                 
                 return result
                 

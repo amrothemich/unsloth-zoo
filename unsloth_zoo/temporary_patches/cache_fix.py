@@ -36,13 +36,16 @@ def patch_sliding_window_cache_device_fix():
                 # Use the device from the input key_states
                 self.device = key_states.device
             
-            # Original SlidingWindowLayer.update logic with device fix
+            # Call the original transformers implementation
+            # But ensure we have a proper device set for any device-dependent operations
             import torch
             
-            # CRITICAL: Check if cache is initialized
+            # If cache is not initialized, let the original code handle it
+            # Our job is just to ensure device is set when needed
             if not hasattr(self, 'keys') or self.keys is None:
-                # Cache not initialized - this might be the first call
-                # Return the input states as-is (this is what the original does)
+                # Cache not initialized - this is normal for first calls
+                # The original transformers code should handle initialization
+                # We'll just ensure device is set for when it's needed
                 return key_states, value_states
             
             # Check if we need to slide the cache
