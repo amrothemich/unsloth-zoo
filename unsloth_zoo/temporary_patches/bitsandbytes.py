@@ -74,7 +74,11 @@ def patch_bitsandbytes_linear4bit_forward():
         # FIX: The original code that fails:
         # weight = self.weight.data.t() if self.weight.dim() == 2 else self.weight.data
         # The .data attribute access causes dynamo compilation to fail
-        print(f"🔧 USING COMPREHENSIVE BITSANDBYTES FORWARD VERSION 2025-11-05-20:15 DYNAMO-SAFE")
+        
+        # Only log once per unique module to reduce spam
+        if not hasattr(self, '_dynamo_patch_logged'):
+            print(f"🔧 USING COMPREHENSIVE BITSANDBYTES FORWARD VERSION 2025-11-05-20:15 DYNAMO-SAFE (module id: {id(self)})")
+            self._dynamo_patch_logged = True
         
         # Use the weight directly without .data attribute access
         if self.weight.dim() == 2:
