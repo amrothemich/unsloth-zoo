@@ -547,9 +547,11 @@ try:
     # If bitsandbytes is available, disable compilation for MoE functions
     from torch._dynamo import disable as _dynamo_disable
     _moe_compile_decorator = _dynamo_disable
+    print("🔧 GPT-OSS: Disabled MoE compilation due to bitsandbytes compatibility")
 except ImportError:
     # No bitsandbytes, use normal compilation
     _moe_compile_decorator = _torch_compile(dynamic = None, fullgraph = True, options = fused_torch_compile_options)
+    print("🔧 GPT-OSS: Using normal MoE compilation (no bitsandbytes)")
 
 @_moe_compile_decorator
 def moe_forward_inference(self, hidden_states):

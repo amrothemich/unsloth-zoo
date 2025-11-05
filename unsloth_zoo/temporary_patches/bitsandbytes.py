@@ -41,7 +41,6 @@ import re
 
 def patch_bitsandbytes_linear4bit_forward():
     # Fixes torch.compile complaining about multiple things
-    print("🐛 DEBUG: Applying bitsandbytes Linear4bit forward patch...")
     try:
         import bitsandbytes
         bitsandbytes.nn.modules.Linear4bit
@@ -71,23 +70,13 @@ def patch_bitsandbytes_linear4bit_forward():
         # weight = self.weight.t() if self.weight.dim() == 2 else self.weight
 
         # Cannot do .t() on Params4bit, instead do it on torch.Tensor
-        # For Params4bit, avoid .data attribute completely to fix dynamo compilation
-        if hasattr(self.weight, 'quant_state'):
-            # This is a Params4bit object - use tensor conversion to avoid .data access
-            # Convert to regular tensor first, then transpose
-            weight_tensor = self.weight.view(self.weight.shape)  # Creates view without .data
-            weight = weight_tensor.t() if weight_tensor.dim() == 2 else weight_tensor
-        else:
-            # Regular tensor case
-            weight = self.weight.t() if self.weight.dim() == 2 else self.weight
+        weight = self.weight.data.t()
 
         return bitsandbytes.matmul_4bit(x, weight, bias=bias, quant_state=self.weight.quant_state).to(inp_dtype)
 
     patch_function(bitsandbytes.nn.modules.Linear4bit, "forward", forward)
-    print("🐛 DEBUG: Patched bitsandbytes.nn.modules.Linear4bit.forward successfully")
     try:
         patch_function(bitsandbytes.nn.Linear4bit, "forward", forward)
-        print("🐛 DEBUG: Patched bitsandbytes.nn.Linear4bit.forward successfully")
     except:
         pass
 pass
