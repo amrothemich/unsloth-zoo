@@ -262,14 +262,28 @@ def patch_comprehensive_cache_debugging():
                 debug_print(f"🚨 CRITICAL: Returning inputs unchanged as last resort")
                 result = key_states, value_states
             
-            # Write all debug output to log file
-            log_debug(debug_buffer.getvalue())
+            # Only do comprehensive logging on failures or periodically
+            should_log_details = (
+                update_exception or 
+                not test_success or 
+                call_count % 1000 == 0 or  # Log details every 1000 calls
+                call_count < 10  # Log first 10 calls for initialization tracking
+            )
+            
+            if should_log_details:
+                # Write all debug output to log file
+                log_debug(debug_buffer.getvalue())
             
             # Only print summary to console
             if update_exception or not test_success:
                 print(f"❌ Cache debug #{call_count}: {'FAILED' if update_exception else 'WARNING'} - see {patch_comprehensive_cache_debugging.log_path}")
-            elif call_count % 100 == 0:  # Print progress every 100 calls
+            elif call_count % 1000 == 0:  # Print progress every 1000 calls
                 print(f"✅ Cache debug #{call_count}: OK - logging to {patch_comprehensive_cache_debugging.log_path}")
+                # Also log a summary every 1000 calls
+                log_debug(f"=== SUMMARY at call #{call_count} ===")
+                log_debug(f"Memory: {torch.cuda.memory_allocated() / 1e9:.2f} GB allocated")
+                log_debug(f"Cache state: {'None' if not hasattr(self, 'keys') or self.keys is None else 'Initialized'}")
+                log_debug("")
             
             return result
         
