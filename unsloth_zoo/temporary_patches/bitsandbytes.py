@@ -74,6 +74,7 @@ def patch_bitsandbytes_linear4bit_forward():
 
         # Cannot do .t() on Params4bit, instead do it on torch.Tensor  
         # Fix dynamo compilation issue by avoiding .data attribute access
+        print(f"🔧 USING FIXED BITSANDBYTES FORWARD with torch.transpose")
         weight = torch.transpose(self.weight, 0, 1)
 
         return bitsandbytes.matmul_4bit(x, weight, bias=bias, quant_state=self.weight.quant_state).to(inp_dtype)
@@ -84,4 +85,6 @@ def patch_bitsandbytes_linear4bit_forward():
     except:
         pass
 pass
+print(f"🔧 CRITICAL: Adding bitsandbytes patch to TEMPORARY_PATCHES list (current length: {len(TEMPORARY_PATCHES)})")
 TEMPORARY_PATCHES.append(patch_bitsandbytes_linear4bit_forward)
+print(f"🔧 CRITICAL: bitsandbytes patch added, new length: {len(TEMPORARY_PATCHES)}")
