@@ -540,7 +540,6 @@ no_combo_fused_torch_compile_options = get_torch_compile_options(
     logging = UNSLOTH_ENABLE_LOGGING,
 )
 
-@torch._dynamo.disable  # Disable compilation for MoE functions when using bitsandbytes
 def moe_forward_inference(self, hidden_states):
     """Torch compile for forward inference path only with CUDAGraphs"""
     # Router

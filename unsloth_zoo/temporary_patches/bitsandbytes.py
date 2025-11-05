@@ -41,11 +41,14 @@ import re
 
 def patch_bitsandbytes_linear4bit_forward():
     # Fixes torch.compile complaining about multiple things
+    print("🔧 CRITICAL: Attempting to patch bitsandbytes Linear4bit forward...")
     try:
         import bitsandbytes
         bitsandbytes.nn.modules.Linear4bit
         fix_4bit_weight_quant_state_from_module = bitsandbytes.nn.modules.fix_4bit_weight_quant_state_from_module
+        print("🔧 CRITICAL: Successfully imported bitsandbytes modules")
     except Exception as e:
+        print(f"🔧 CRITICAL: Failed to import bitsandbytes: {e}")
         return raise_error("bitsandbytes.Linear4bit", e)
 
     def forward(self, x: torch.Tensor):
@@ -69,8 +72,9 @@ def patch_bitsandbytes_linear4bit_forward():
         # ** Errors out in torch.compile
         # weight = self.weight.t() if self.weight.dim() == 2 else self.weight
 
-        # Cannot do .t() on Params4bit, instead do it on torch.Tensor
-        weight = self.weight.data.t()
+        # Cannot do .t() on Params4bit, instead do it on torch.Tensor  
+        # Fix dynamo compilation issue by avoiding .data attribute access
+        weight = torch.transpose(self.weight, 0, 1)
 
         return bitsandbytes.matmul_4bit(x, weight, bias=bias, quant_state=self.weight.quant_state).to(inp_dtype)
 
