@@ -17,6 +17,7 @@
 
 from .common import *
 from .bitsandbytes import *  # Import bitsandbytes patches first
+from .cache_fix import *  # Import cache fix patches
 from .gemma import *
 from .misc import *
 from .gemma3n import *
