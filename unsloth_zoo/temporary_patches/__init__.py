@@ -18,7 +18,8 @@
 from .common import *
 from .bitsandbytes import *  # Import bitsandbytes patches first
 from .cache_fix import *  # Import cache fix patches
-from .comprehensive_cache_debug import *  # Import comprehensive debugging
+from .lightweight_cache_debug import *  # Import lightweight debugging (minimal overhead)
+# from .comprehensive_cache_debug import *  # Disabled - use only for deep debugging
 from .gemma import *
 from .misc import *
 from .gemma3n import *
