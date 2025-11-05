@@ -72,6 +72,22 @@ def patch_lightweight_cache_debugging():
                     with open(patch_lightweight_cache_debugging.log_path, 'a') as f:
                         f.write(f"Call #{call_count}: Cache INITIALIZED (id:{cache_id}) - shape: {self.keys.shape}\n")
                 
+                # Special logging around the critical call #2595
+                if 2590 <= call_count <= 2600:
+                    with open(patch_lightweight_cache_debugging.log_path, 'a') as f:
+                        f.write(f"\n🔍 CRITICAL RANGE - Call #{call_count}:\n")
+                        f.write(f"  Cache ID: {cache_id}\n")
+                        f.write(f"  Key states shape: {key_states.shape}\n")
+                        f.write(f"  Value states shape: {value_states.shape}\n")
+                        f.write(f"  Cache kwargs: {cache_kwargs}\n")
+                        if hasattr(self, 'keys') and self.keys is not None:
+                            f.write(f"  Cache keys shape: {self.keys.shape}\n")
+                            f.write(f"  Cache keys device: {self.keys.device}\n")
+                            f.write(f"  Cache keys dtype: {self.keys.dtype}\n")
+                            f.write(f"  Cache keys contiguous: {self.keys.is_contiguous()}\n")
+                        f.write(f"  GPU Memory: {torch.cuda.memory_allocated() / 1e9:.3f} GB\n")
+                        f.write("\n")
+                
                 elif not cache_was_none and cache_is_none_after:
                     # Cache got reset/cleared - this is suspicious!
                     print(f"⚠️  Cache #{call_count}: Cache RESET TO NONE (id:{cache_id}) - this might be a problem!")
