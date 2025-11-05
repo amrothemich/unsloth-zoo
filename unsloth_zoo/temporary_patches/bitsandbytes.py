@@ -74,8 +74,13 @@ def patch_bitsandbytes_linear4bit_forward():
 
         # Cannot do .t() on Params4bit, instead do it on torch.Tensor  
         # Fix dynamo compilation issue by avoiding .data attribute access
-        print(f"🔧 USING FIXED BITSANDBYTES FORWARD VERSION 2025-11-05-17:56 with torch.transpose")
-        weight = torch.transpose(self.weight, 0, 1)
+        print(f"🔧 USING FIXED BITSANDBYTES FORWARD VERSION 2025-11-05-18:05 with permute")
+        if self.weight.dim() == 2:
+            # Use permute instead of .data.t() to avoid dynamo compilation issues
+            # permute should preserve more metadata than transpose
+            weight = self.weight.permute(1, 0)
+        else:
+            weight = self.weight
 
         return bitsandbytes.matmul_4bit(x, weight, bias=bias, quant_state=self.weight.quant_state).to(inp_dtype)
 
