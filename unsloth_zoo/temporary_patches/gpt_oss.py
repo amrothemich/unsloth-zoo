@@ -540,20 +540,7 @@ no_combo_fused_torch_compile_options = get_torch_compile_options(
     logging = UNSLOTH_ENABLE_LOGGING,
 )
 
-# Check if using 4bit quantization to conditionally disable compilation
-# Simpler approach: if bitsandbytes is imported, assume we need to disable compilation
-try:
-    import bitsandbytes as bnb
-    # If bitsandbytes is available, disable compilation for MoE functions
-    from torch._dynamo import disable as _dynamo_disable
-    _moe_compile_decorator = _dynamo_disable
-    print("🔧 GPT-OSS: Disabled MoE compilation due to bitsandbytes compatibility")
-except ImportError:
-    # No bitsandbytes, use normal compilation
-    _moe_compile_decorator = _torch_compile(dynamic = None, fullgraph = True, options = fused_torch_compile_options)
-    print("🔧 GPT-OSS: Using normal MoE compilation (no bitsandbytes)")
-
-@_moe_compile_decorator
+@torch._dynamo.disable  # Disable compilation for MoE functions when using bitsandbytes
 def moe_forward_inference(self, hidden_states):
     """Torch compile for forward inference path only with CUDAGraphs"""
     # Router
