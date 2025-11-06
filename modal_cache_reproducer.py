@@ -298,36 +298,48 @@ def main():
     import time
     
     # Start the reproducer
+    print("Starting training function...")
     handle = reproduce_cache_issue.spawn()
     
     # Monitor progress every 2 minutes
     start_time = time.time()
-    while not handle.is_finished():
-        elapsed = time.time() - start_time
-        print(f"\n⏱️  Training running for {elapsed/60:.1f} minutes...")
-        
-        # Check logs periodically
-        try:
-            logs_info = check_logs.remote()
-            if logs_info:
-                print(f"📋 Cache logs detected: {len(logs_info)} files")
-                for log_file, info in logs_info.items():
-                    if isinstance(info, dict) and info.get("has_failures"):
-                        print(f"   ⚠️  {log_file}: {info['lines']} lines, HAS FAILURES!")
-                    elif isinstance(info, dict):
-                        print(f"   📄 {log_file}: {info['lines']} lines")
-        except Exception as e:
-            print(f"   (Could not check logs: {e})")
-        
-        # Wait 2 minutes before next check
-        time.sleep(120)
+    check_interval = 30  # Check every 30 seconds initially
     
-    # Get final result
+    while True:
+        try:
+            # Try to get the result with a short timeout
+            result = handle.get(timeout=check_interval)
+            # If we get here, the function completed
+            break
+        except TimeoutError:
+            # Function is still running
+            elapsed = time.time() - start_time
+            print(f"\n⏱️  Training running for {elapsed/60:.1f} minutes...")
+            
+            # Check logs periodically
+            try:
+                logs_info = check_logs.remote()
+                if logs_info:
+                    print(f"📋 Cache logs detected: {len(logs_info)} files")
+                    for log_file, info in logs_info.items():
+                        if isinstance(info, dict) and info.get("has_failures"):
+                            print(f"   ⚠️  {log_file}: {info['lines']} lines, HAS FAILURES!")
+                        elif isinstance(info, dict):
+                            print(f"   📄 {log_file}: {info['lines']} lines")
+            except Exception as e:
+                print(f"   (Could not check logs: {e})")
+            
+            # Increase check interval for longer runs
+            if elapsed > 600:  # After 10 minutes, check every 2 minutes
+                check_interval = 120
+            
+            continue  # Continue the while loop
+    
+    # Function completed, we have the result
+    print(f"\n🎯 Final Result: {result}")
+    
+    # Get final logs
     try:
-        result = handle.get()
-        print(f"\n🎯 Final Result: {result}")
-        
-        # Get final logs
         final_logs = check_logs.remote()
         if final_logs:
             print(f"\n📋 Final cache logs analysis:")
@@ -352,8 +364,8 @@ def main():
             print(f"\n❌ Unexpected error: {result.get('error_message', 'Unknown')}")
             
     except Exception as e:
-        print(f"\n💥 Error getting result: {e}")
-        # Still check logs
+        print(f"\n💥 Error during final analysis: {e}")
+        # Still try to check logs
         try:
             final_logs = check_logs.remote()
             if final_logs:

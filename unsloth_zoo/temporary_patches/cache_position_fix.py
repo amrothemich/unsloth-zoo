@@ -197,6 +197,9 @@ def patch_sliding_window_cache_creation():
                             cache_kwargs = dict(cache_kwargs)
                             cache_kwargs['cache_position'] = corrected_position
                             print(f"   Fixed: mapped {cache_shape[0]} positions to single position {last_valid_position} (window: {window_size})")
+                            
+                            # Set pos_value for later use in wrapping logic
+                            pos_value = last_valid_position
                         else:
                             pos_value = cache_position.item()
                     elif hasattr(cache_position, 'item'):
