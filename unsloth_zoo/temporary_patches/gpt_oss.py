@@ -1315,8 +1315,17 @@ def patch_GptOssForCausalLM():
     @functools.wraps(original_forward)
     def inference_mode_wrapper(self, *args, **kwargs):
         """Wrapper that ensures inference mode during eval to prevent gradient allocation"""
+        import sys
+        import logging
+
         # CRITICAL FIX: Fix cache_position IMMEDIATELY at forward entry if corrupted
         # cache_position can be passed as POSITIONAL arg #9 (index 8) OR as keyword arg
+
+        # Force immediate output
+        msg = f"🔍 FORWARD WRAPPER CALLED: len(args)={len(args)}, kwargs keys={list(kwargs.keys())}"
+        print(msg, flush=True)
+        sys.stdout.flush()
+        logger.warning(msg)  # Use warning level to ensure it shows
 
         cache_pos = None
         cache_pos_location = None  # Track where we found it: 'args' or 'kwargs'
@@ -1327,30 +1336,54 @@ def patch_GptOssForCausalLM():
         if len(args) >= 9 and args[8] is not None:
             cache_pos = args[8]
             cache_pos_location = 'args'
-            print(f"🔍 FORWARD: Found cache_position in positional args[8]: shape={cache_pos.shape if hasattr(cache_pos, 'shape') else 'N/A'}")
+            msg = f"🔍 FORWARD: Found cache_position in positional args[8]: shape={cache_pos.shape if hasattr(cache_pos, 'shape') else 'N/A'}, type={type(cache_pos)}"
+            print(msg, flush=True)
+            sys.stdout.flush()
+            logger.warning(msg)
 
         # Also check kwargs in case it's passed as keyword argument
         elif 'cache_position' in kwargs and kwargs['cache_position'] is not None:
             cache_pos = kwargs['cache_position']
             cache_pos_location = 'kwargs'
-            print(f"🔍 FORWARD: Found cache_position in kwargs: shape={cache_pos.shape if hasattr(cache_pos, 'shape') else 'N/A'}")
+            msg = f"🔍 FORWARD: Found cache_position in kwargs: shape={cache_pos.shape if hasattr(cache_pos, 'shape') else 'N/A'}, type={type(cache_pos)}"
+            print(msg, flush=True)
+            sys.stdout.flush()
+            logger.warning(msg)
+        else:
+            msg = f"⚠️  FORWARD: cache_position NOT FOUND! len(args)={len(args)}, 'cache_position' in kwargs={'cache_position' in kwargs}"
+            print(msg, flush=True)
+            sys.stdout.flush()
+            logger.warning(msg)
 
         # If we found cache_position, check if it's corrupted
         if cache_pos is not None and hasattr(cache_pos, 'shape') and len(cache_pos.shape) > 0 and cache_pos.shape[0] > 1:
             # Cache position is corrupted! Fix it NOW
-            print(f"🚨 FORWARD FIX: cache_position corrupted at forward entry! Shape: {cache_pos.shape}")
-            print(f"   First 10 values: {cache_pos[:10].tolist() if cache_pos.shape[0] >= 10 else cache_pos.tolist()}")
+            msg = f"🚨 FORWARD FIX: cache_position corrupted at forward entry! Shape: {cache_pos.shape}"
+            print(msg, flush=True)
+            sys.stdout.flush()
+            logger.error(msg)  # Use error level for critical issues
+
+            msg2 = f"   First 10 values: {cache_pos[:10].tolist() if cache_pos.shape[0] >= 10 else cache_pos.tolist()}"
+            print(msg2, flush=True)
+            sys.stdout.flush()
+            logger.error(msg2)
 
             last_pos = cache_pos[-1].item()
             sliding_window = getattr(self.config, 'sliding_window', None)
 
             if sliding_window is not None and last_pos >= sliding_window:
                 wrapped_pos = last_pos % sliding_window
-                print(f"   Wrapping {last_pos} -> {wrapped_pos} (window: {sliding_window})")
+                msg3 = f"   Wrapping {last_pos} -> {wrapped_pos} (window: {sliding_window})"
+                print(msg3, flush=True)
+                sys.stdout.flush()
+                logger.error(msg3)
                 last_pos = wrapped_pos
 
             fixed_cache_pos = torch.tensor([last_pos], device=cache_pos.device, dtype=cache_pos.dtype)
-            print(f"   ✅ Fixed to: {fixed_cache_pos}")
+            msg4 = f"   ✅ Fixed to: {fixed_cache_pos}"
+            print(msg4, flush=True)
+            sys.stdout.flush()
+            logger.error(msg4)
 
             # Update the cache_position in the correct location
             if cache_pos_location == 'args':
@@ -1358,10 +1391,16 @@ def patch_GptOssForCausalLM():
                 args = list(args)
                 args[8] = fixed_cache_pos
                 args = tuple(args)
-                print(f"   ✅ Updated args[8] with fixed cache_position")
+                msg5 = f"   ✅ Updated args[8] with fixed cache_position"
+                print(msg5, flush=True)
+                sys.stdout.flush()
+                logger.error(msg5)
             elif cache_pos_location == 'kwargs':
                 kwargs['cache_position'] = fixed_cache_pos
-                print(f"   ✅ Updated kwargs['cache_position'] with fixed value")
+                msg5 = f"   ✅ Updated kwargs['cache_position'] with fixed value"
+                print(msg5, flush=True)
+                sys.stdout.flush()
+                logger.error(msg5)
 
         if not self.training:
             # Use inference_mode during eval
