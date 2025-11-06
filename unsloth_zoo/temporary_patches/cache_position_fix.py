@@ -163,9 +163,13 @@ def patch_sliding_window_cache_creation():
             # Call original init with all the parameters it expects
             original_init(self, max_cache_len=max_cache_len, sliding_window=sliding_window, **kwargs)
             
-            # Store the actual window size for bounds checking
-            self._actual_window_size = max_cache_len
-            print(f"🔧 SlidingWindowLayer initialized with window size: {max_cache_len}")
+            # CRITICAL FIX: Use sliding_window (128), NOT max_cache_len (3299)!
+            # max_cache_len is the total cache capacity, sliding_window is the actual window size
+            self._actual_window_size = sliding_window if sliding_window is not None else 128
+            print(f"🔧 SlidingWindowLayer initialized:")
+            print(f"   max_cache_len: {max_cache_len} (total capacity)")
+            print(f"   sliding_window: {sliding_window} (actual window size)")
+            print(f"   Using window size: {self._actual_window_size} for position bounds")
         
         # Store original update
         original_update = SlidingWindowLayer.update
@@ -181,22 +185,43 @@ def patch_sliding_window_cache_creation():
                         if len(cache_shape) > 1 or (len(cache_shape) == 1 and cache_shape[0] > 1):
                             print(f"🚨 SlidingWindow: CORRUPTED cache_position shape: {cache_shape}")
                             
-                            # The issue is that we have a tensor with 1156 positions when we should have 1
-                            # Instead of just taking the last position, we need to map all positions to valid window positions
-                            corrupted_positions = cache_position
+                            # Get the CORRECT window size (should be 128 for GPT-OSS)
                             window_size = getattr(self, '_actual_window_size', 128)
                             
-                            # Map all positions to valid window positions using modulo
+                            print(f"🔍 CORRUPTION ANALYSIS:")
+                            print(f"   Expected: scalar cache_position")
+                            print(f"   Got: tensor with {cache_shape[0]} positions")
+                            print(f"   Window size: {window_size}")
+                            print(f"   This suggests positions accumulated incorrectly during generation")
+                            
+                            # CONSERVATIVE APPROACH: Abort instead of silently "fixing"
+                            import os
+                            abort_on_corruption = os.environ.get("UNSLOTH_ABORT_ON_CACHE_CORRUPTION", "0") == "1"
+                            
+                            if abort_on_corruption:
+                                raise RuntimeError(
+                                    f"Cache position corruption detected! "
+                                    f"cache_position shape {cache_shape} indicates positions accumulated incorrectly. "
+                                    f"This could lead to silent training on wrong position encodings. "
+                                    f"Aborting to prevent silent corruption. "
+                                    f"Set UNSLOTH_ABORT_ON_CACHE_CORRUPTION=0 to attempt repair (not recommended)."
+                                )
+                            
+                            # REPAIR ATTEMPT (potentially unsafe for training)
+                            print(f"⚠️  ATTEMPTING REPAIR (potentially unsafe for training)")
+                            
+                            # Use modulo to wrap positions to valid range
+                            corrupted_positions = cache_position
                             valid_positions = corrupted_positions % window_size
                             
-                            # For sliding window, we actually only need the last position typically
-                            # But to avoid dimension mismatch, we'll take just the last one as a scalar tensor
+                            # Take the last position as that's typically the current generation step
                             last_valid_position = valid_positions[-1].item()
                             corrected_position = torch.tensor([last_valid_position], device=cache_position.device, dtype=cache_position.dtype)
                             
                             cache_kwargs = dict(cache_kwargs)
                             cache_kwargs['cache_position'] = corrected_position
-                            print(f"   Fixed: mapped {cache_shape[0]} positions to single position {last_valid_position} (window: {window_size})")
+                            print(f"   🔧 REPAIRED: mapped {cache_shape[0]} positions to single position {last_valid_position} (window: {window_size})")
+                            print(f"   ⚠️  WARNING: This repair may cause silent training corruption!")
                             
                             # Set pos_value for later use in wrapping logic
                             pos_value = last_valid_position
