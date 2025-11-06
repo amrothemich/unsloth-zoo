@@ -23,15 +23,10 @@ import datetime
 import io
 import sys
 
-# IMMEDIATE MARKER: Write to file as soon as this module is imported
-try:
-    os.makedirs('/dbfs/FileStore/payer_ai/NLP/CALLM', exist_ok=True)
-    with open('/dbfs/FileStore/payer_ai/NLP/CALLM/cache_debug.txt', 'a') as f:
-        f.write(f"\n{'='*80}\n")
-        f.write(f"🔧 comprehensive_cache_debug.py MODULE IMPORTED at {datetime.datetime.now()}\n")
-        f.write(f"{'='*80}\n\n")
-except:
-    pass  # Don't fail if can't write
+# Just print - file writes don't work reliably in Databricks notebooks
+print("="*80)
+print(f"🔧 comprehensive_cache_debug MODULE LOADED at {datetime.datetime.now()}")
+print("="*80)
 
 def patch_comprehensive_cache_debugging():
     """
@@ -79,35 +74,13 @@ def patch_comprehensive_cache_debugging():
             call_count = patch_comprehensive_cache_debugging.call_count
             patch_comprehensive_cache_debugging.call_count += 1
 
-            # Log every call to verify patch is working
-            if call_count % 100 == 0 or call_count < 5:
-                try:
-                    with open('/dbfs/FileStore/payer_ai/NLP/CALLM/cache_debug.txt', 'a') as f:
-                        f.write(f"✓ SlidingWindowLayer.update call #{call_count}\n")
-                except:
-                    pass
-
             # ========================================================================
             # CRITICAL FIX: Check and fix cache_position in cache_kwargs RIGHT NOW!
             # ========================================================================
             if "cache_position" in cache_kwargs and cache_kwargs["cache_position"] is not None:
                 cache_pos = cache_kwargs["cache_position"]
                 if hasattr(cache_pos, 'shape') and len(cache_pos.shape) > 0 and cache_pos.shape[0] > 1:
-                    # CORRUPTED! Fix it immediately
-                    debug_msg = f"""
-🚨 CACHE CORRUPTION DETECTED IN SlidingWindowLayer.update!
-Call #{call_count}
-Shape: {cache_pos.shape}
-Values (first 20): {cache_pos[:20].tolist() if cache_pos.shape[0] >= 20 else cache_pos.tolist()}
-"""
-                    try:
-                        with open('/dbfs/FileStore/payer_ai/NLP/CALLM/cache_debug.txt', 'a') as f:
-                            f.write(debug_msg)
-                            f.write('\n' + '='*80 + '\n')
-                    except:
-                        pass
-
-                    # FIX IT
+                    # CORRUPTED! Fix it immediately (silently - file writes don't work)
                     last_pos = cache_pos[-1].item()
                     sliding_window = getattr(self, 'sliding_window', None)
                     if sliding_window is not None and last_pos >= sliding_window:
@@ -117,11 +90,9 @@ Values (first 20): {cache_pos[:20].tolist() if cache_pos.shape[0] >= 20 else cac
                                                                    device=cache_pos.device,
                                                                    dtype=cache_pos.dtype)
 
-                    try:
-                        with open('/dbfs/FileStore/payer_ai/NLP/CALLM/cache_debug.txt', 'a') as f:
-                            f.write(f"✅ FIXED in SlidingWindowLayer.update: Reduced to position {last_pos}\n\n")
-                    except:
-                        pass
+                    # Print to stdout so we can see it happened (first few times only)
+                    if call_count < 3:
+                        print(f"🔧 Fixed cache_position corruption: {cache_pos.shape[0]} elements -> 1 (pos={last_pos})")
 
             # Buffer for all debug output
             debug_buffer = io.StringIO()
@@ -360,18 +331,8 @@ print("="*80)
 print("✅ patch_comprehensive_cache_debugging() COMPLETED!")
 print("="*80)
 
-# Write marker to debug file to confirm patch was loaded
-try:
-    import os
-    os.makedirs('/dbfs/FileStore/payer_ai/NLP/CALLM', exist_ok=True)
-    with open('/dbfs/FileStore/payer_ai/NLP/CALLM/cache_debug.txt', 'a') as f:
-        import datetime
-        f.write(f"\n\n{'='*80}\n")
-        f.write(f"🔧 PATCH LOADED at {datetime.datetime.now()}\n")
-        f.write(f"comprehensive_cache_debug patch with cache_position fix is ACTIVE\n")
-        f.write(f"{'='*80}\n\n")
-except Exception as e:
-    print(f"Could not write patch marker: {e}")
+# Print confirmation that patch was loaded
+print(f"✅ comprehensive_cache_debug patch with cache_position fix is ACTIVE")
 
 # Add to temporary patches
 TEMPORARY_PATCHES.append(patch_comprehensive_cache_debugging)
