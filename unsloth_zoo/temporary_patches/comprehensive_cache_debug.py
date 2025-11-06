@@ -69,6 +69,14 @@ def patch_comprehensive_cache_debugging():
             call_count = patch_comprehensive_cache_debugging.call_count
             patch_comprehensive_cache_debugging.call_count += 1
 
+            # Log every call to verify patch is working
+            if call_count % 100 == 0 or call_count < 5:
+                try:
+                    with open('/dbfs/FileStore/payer_ai/NLP/CALLM/cache_debug.txt', 'a') as f:
+                        f.write(f"✓ SlidingWindowLayer.update call #{call_count}\n")
+                except:
+                    pass
+
             # ========================================================================
             # CRITICAL FIX: Check and fix cache_position in cache_kwargs RIGHT NOW!
             # ========================================================================
@@ -341,6 +349,19 @@ patch_comprehensive_cache_debugging()
 print("="*80)
 print("✅ patch_comprehensive_cache_debugging() COMPLETED!")
 print("="*80)
+
+# Write marker to debug file to confirm patch was loaded
+try:
+    import os
+    os.makedirs('/dbfs/FileStore/payer_ai/NLP/CALLM', exist_ok=True)
+    with open('/dbfs/FileStore/payer_ai/NLP/CALLM/cache_debug.txt', 'a') as f:
+        import datetime
+        f.write(f"\n\n{'='*80}\n")
+        f.write(f"🔧 PATCH LOADED at {datetime.datetime.now()}\n")
+        f.write(f"comprehensive_cache_debug patch with cache_position fix is ACTIVE\n")
+        f.write(f"{'='*80}\n\n")
+except Exception as e:
+    print(f"Could not write patch marker: {e}")
 
 # Add to temporary patches
 TEMPORARY_PATCHES.append(patch_comprehensive_cache_debugging)
