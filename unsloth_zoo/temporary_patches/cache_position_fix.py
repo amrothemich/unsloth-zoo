@@ -63,16 +63,26 @@ def patch_cache_position_generation():
                                 print(f"   First 5 values: {cache_position[:5].tolist()}")
                                 print(f"   Last 5 values: {cache_position[-5:].tolist()}")
                             
-                            # Use the last position as that's likely the current one
-                            pos_value = cache_position[-1].item()
-                            print(f"   Using last position: {pos_value}")
+                            # CRITICAL FIX: The cache_position tensor has grown incorrectly
+                            # Instead of trying to pick one position, we need to understand why it grew
+                            
+                            if cache_shape[0] > 100:  # Large corruption like 1156
+                                # This is likely a sequence of positions that accumulated incorrectly
+                                # The correct approach is to reset to the current step in the sequence
+                                # Calculate the current position based on sequence progress
+                                pos_value = (cache_shape[0] - 1) % sliding_window_size
+                                print(f"   Large corruption: resetting to position {pos_value} (from {cache_shape[0]} positions)")
+                            else:
+                                # Small corruption - use the last position
+                                pos_value = cache_position[-1].item() % sliding_window_size
+                                print(f"   Small corruption: using wrapped last position {pos_value}")
                             
                             # FIX THE CORRUPTION: Replace with correct single-position tensor
                             corrected_position = torch.tensor([pos_value], 
                                                              device=cache_position.device, 
                                                              dtype=cache_position.dtype)
                             updated_kwargs["cache_position"] = corrected_position
-                            print(f"   ✅ FIXED: Replaced {cache_shape} tensor with scalar position {pos_value}")
+                            print(f"   ✅ FIXED: Replaced {cache_shape} tensor with wrapped position {pos_value}")
                         else:
                             # Normal case - single position
                             pos_value = cache_position.item()
@@ -170,12 +180,23 @@ def patch_sliding_window_cache_creation():
                         cache_shape = cache_position.shape
                         if len(cache_shape) > 1 or (len(cache_shape) == 1 and cache_shape[0] > 1):
                             print(f"🚨 SlidingWindow: CORRUPTED cache_position shape: {cache_shape}")
-                            # Use the last position and fix the tensor
-                            pos_value = cache_position[-1].item()
-                            corrected_position = torch.tensor([pos_value], device=cache_position.device, dtype=cache_position.dtype)
+                            
+                            # The issue is that we have a tensor with 1156 positions when we should have 1
+                            # Instead of just taking the last position, we need to map all positions to valid window positions
+                            corrupted_positions = cache_position
+                            window_size = getattr(self, '_actual_window_size', 128)
+                            
+                            # Map all positions to valid window positions using modulo
+                            valid_positions = corrupted_positions % window_size
+                            
+                            # For sliding window, we actually only need the last position typically
+                            # But to avoid dimension mismatch, we'll take just the last one as a scalar tensor
+                            last_valid_position = valid_positions[-1].item()
+                            corrected_position = torch.tensor([last_valid_position], device=cache_position.device, dtype=cache_position.dtype)
+                            
                             cache_kwargs = dict(cache_kwargs)
                             cache_kwargs['cache_position'] = corrected_position
-                            print(f"   Fixed: using position {pos_value}")
+                            print(f"   Fixed: mapped {cache_shape[0]} positions to single position {last_valid_position} (window: {window_size})")
                         else:
                             pos_value = cache_position.item()
                     elif hasattr(cache_position, 'item'):

@@ -37,7 +37,7 @@ app = modal.App("cache-reproducer")
 @app.function(
     gpu="A100-40GB",
     image=image,
-    timeout=1800,  # 30 minutes
+    timeout=3600,  # 60 minutes - much longer timeout
     memory=32768,
     volumes={"/state": state_volume},
     env={
@@ -166,7 +166,7 @@ Additional Context: """ + "detailed medical assessment data requiring thorough a
         num_generations=2,  # Multiple generations trigger cache corruption
         max_prompt_length=max_prompt_length,
         max_completion_length=max_completion_length,
-        max_steps=3,  # Just 3 steps to reproduce issue quickly
+        max_steps=10,  # Increase steps to give more chance for cache overflow
         save_steps=10,
         output_dir="/state/output",
         beta=0.0,
@@ -196,8 +196,35 @@ Additional Context: """ + "detailed medical assessment data requiring thorough a
     print("="*80)
     
     try:
-        # Run training - this should trigger the cache issue
+        # Run training with progress monitoring
+        import time
+        import threading
+        
+        # Progress monitor that prints every 2 minutes
+        def progress_monitor():
+            start_time = time.time()
+            while training_active:
+                time.sleep(120)  # Wait 2 minutes
+                if training_active:
+                    elapsed = time.time() - start_time
+                    print(f"🕐 Training still running... {elapsed/60:.1f} minutes elapsed")
+                    print(f"   GPU Memory: {torch.cuda.memory_allocated() / 1e9:.2f} GB allocated")
+                    
+                    # Check for any cache logs generated so far
+                    if os.path.exists("/state/cache_logs"):
+                        log_files = [f for f in os.listdir("/state/cache_logs") 
+                                   if f.startswith("unsloth_cache")]
+                        if log_files:
+                            print(f"   📋 Cache logs generated: {len(log_files)} files")
+        
+        training_active = True
+        monitor_thread = threading.Thread(target=progress_monitor, daemon=True)
+        monitor_thread.start()
+        
+        print("🚀 Starting GRPO training with monitoring...")
         trainer.train()
+        training_active = False
+        
         print("✅ Training completed - no cache issue reproduced")
         return {"success": True, "cache_issue_reproduced": False}
         
@@ -235,17 +262,106 @@ Additional Context: """ + "detailed medical assessment data requiring thorough a
                 "error_message": error_msg
             }
 
+@app.function(
+    image=image,
+    volumes={"/state": state_volume}
+)
+def check_logs():
+    """Check and return cache logs"""
+    import os
+    
+    logs_info = {}
+    if os.path.exists("/state/cache_logs"):
+        log_files = [f for f in os.listdir("/state/cache_logs") 
+                    if f.startswith("unsloth_cache")]
+        
+        for log_file in log_files:
+            log_path = os.path.join("/state/cache_logs", log_file)
+            try:
+                with open(log_path, 'r') as f:
+                    content = f.read()
+                logs_info[log_file] = {
+                    "size": len(content),
+                    "lines": len(content.splitlines()),
+                    "has_failures": "FAILURE" in content,
+                    "has_illegal_access": "illegal memory access" in content,
+                    "preview": content[:1000] if content else ""
+                }
+            except Exception as e:
+                logs_info[log_file] = {"error": str(e)}
+    
+    return logs_info
+
 @app.local_entrypoint()
 def main():
-    print("🚀 Running minimal cache overflow reproducer...")
-    result = reproduce_cache_issue.remote()
-    print(f"\n🎯 Result: {result}")
+    print("🚀 Running minimal cache overflow reproducer with 60min timeout...")
+    import time
     
-    if result.get("cache_issue_reproduced"):
-        print("\n✅ CACHE ISSUE SUCCESSFULLY REPRODUCED!")
-        print("Next step: Apply fixes to unsloth-zoo patches")
-    else:
-        print("\n❌ Cache issue not reproduced - may need different parameters")
+    # Start the reproducer
+    handle = reproduce_cache_issue.spawn()
+    
+    # Monitor progress every 2 minutes
+    start_time = time.time()
+    while not handle.is_finished():
+        elapsed = time.time() - start_time
+        print(f"\n⏱️  Training running for {elapsed/60:.1f} minutes...")
+        
+        # Check logs periodically
+        try:
+            logs_info = check_logs.remote()
+            if logs_info:
+                print(f"📋 Cache logs detected: {len(logs_info)} files")
+                for log_file, info in logs_info.items():
+                    if isinstance(info, dict) and info.get("has_failures"):
+                        print(f"   ⚠️  {log_file}: {info['lines']} lines, HAS FAILURES!")
+                    elif isinstance(info, dict):
+                        print(f"   📄 {log_file}: {info['lines']} lines")
+        except Exception as e:
+            print(f"   (Could not check logs: {e})")
+        
+        # Wait 2 minutes before next check
+        time.sleep(120)
+    
+    # Get final result
+    try:
+        result = handle.get()
+        print(f"\n🎯 Final Result: {result}")
+        
+        # Get final logs
+        final_logs = check_logs.remote()
+        if final_logs:
+            print(f"\n📋 Final cache logs analysis:")
+            for log_file, info in final_logs.items():
+                if isinstance(info, dict):
+                    print(f"  {log_file}:")
+                    print(f"    Lines: {info.get('lines', 0)}")
+                    print(f"    Has failures: {info.get('has_failures', False)}")
+                    print(f"    Has illegal access: {info.get('has_illegal_access', False)}")
+                    if info.get('preview'):
+                        print(f"    Preview: {info['preview'][:200]}...")
+        
+        if result.get("cache_issue_reproduced"):
+            print("\n✅ CACHE ISSUE SUCCESSFULLY REPRODUCED!")
+            print("The illegal memory access error was triggered as expected")
+        elif result.get("success"):
+            print("\n🤔 Training completed without cache issue")
+            print("This could mean either:")
+            print("  1. The fixes are working correctly (good!)")
+            print("  2. We need different parameters to trigger the issue")
+        else:
+            print(f"\n❌ Unexpected error: {result.get('error_message', 'Unknown')}")
+            
+    except Exception as e:
+        print(f"\n💥 Error getting result: {e}")
+        # Still check logs
+        try:
+            final_logs = check_logs.remote()
+            if final_logs:
+                print(f"\n📋 Available logs despite error:")
+                for log_file, info in final_logs.items():
+                    print(f"  {log_file}: {info}")
+        except:
+            pass
 
 if __name__ == "__main__":
     main()
