@@ -1315,6 +1315,20 @@ def patch_GptOssForCausalLM():
     @functools.wraps(original_forward)
     def inference_mode_wrapper(self, *args, **kwargs):
         """Wrapper that ensures inference mode during eval to prevent gradient allocation"""
+        # CRITICAL FIX: Fix cache_position IMMEDIATELY at forward entry if corrupted
+        if 'cache_position' in kwargs and kwargs['cache_position'] is not None:
+            cache_pos = kwargs['cache_position']
+            if hasattr(cache_pos, 'shape') and len(cache_pos.shape) > 0 and cache_pos.shape[0] > 1:
+                # Cache position is corrupted! Fix it NOW
+                print(f"🚨 FORWARD FIX: cache_position corrupted at forward entry! Shape: {cache_pos.shape}")
+                last_pos = cache_pos[-1].item()
+                sliding_window = getattr(self.config, 'sliding_window', None)
+                if sliding_window is not None and last_pos >= sliding_window:
+                    last_pos = last_pos % sliding_window
+                    print(f"   Wrapped {cache_pos[-1].item()} -> {last_pos} (window: {sliding_window})")
+                kwargs['cache_position'] = torch.tensor([last_pos], device=cache_pos.device, dtype=cache_pos.dtype)
+                print(f"   ✅ Fixed to: {kwargs['cache_position']}")
+
         if not self.training:
             # Use inference_mode during eval
             with torch.inference_mode():
