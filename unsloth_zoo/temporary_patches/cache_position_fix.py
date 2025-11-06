@@ -395,13 +395,13 @@ def patch_initial_cache_position_creation():
         from transformers.generation.utils import GenerationMixin
         import torch
 
-        # Patch the _sample method where cache_position is initially created
-        original_sample = GenerationMixin._sample
+        # Check if already patched to avoid double-patching
+        if hasattr(GenerationMixin._sample, '_unsloth_cache_position_patched'):
+            print("⚠️  Initial cache_position patch already applied, skipping")
+            return
 
-        def fixed_sample(self, *args, **kwargs):
-            # Call the original _sample
-            result = original_sample(self, *args, **kwargs)
-            return result
+        # Save the original _sample method
+        original_sample = GenerationMixin._sample
 
         # Monkey-patch _sample to intercept model_kwargs
         def patched_sample(
@@ -453,6 +453,9 @@ def patch_initial_cache_position_creation():
                 generation_config, synced_gpus, streamer, **model_kwargs
             )
 
+        # Mark the patched function to avoid double-patching
+        patched_sample._unsloth_cache_position_patched = True
+
         GenerationMixin._sample = patched_sample
         print("✅ Applied initial cache_position creation fix (patches _sample)")
 
@@ -460,6 +463,8 @@ def patch_initial_cache_position_creation():
         pass
     except Exception as e:
         print(f"Warning: Failed to patch initial cache_position creation: {e}")
+        import traceback
+        traceback.print_exc()
 
 # Apply patches immediately on module import
 patch_cache_position_generation()
