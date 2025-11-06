@@ -333,5 +333,14 @@ Values (first 20): {cache_pos[:20].tolist() if cache_pos.shape[0] >= 20 else cac
         print(f"❌ Failed to apply comprehensive cache debugging patch: {e}")
         traceback.print_exc()
 
+# CRITICAL: Execute the patch immediately on module import!
+print("="*80)
+print("🚨 EXECUTING patch_comprehensive_cache_debugging() NOW!")
+print("="*80)
+patch_comprehensive_cache_debugging()
+print("="*80)
+print("✅ patch_comprehensive_cache_debugging() COMPLETED!")
+print("="*80)
+
 # Add to temporary patches
 TEMPORARY_PATCHES.append(patch_comprehensive_cache_debugging)
