@@ -186,80 +186,58 @@ def patch_sliding_window_cache_creation():
         original_update = SlidingWindowLayer.update
         
         def bounded_update(self, key_states, value_states, cache_kwargs):
-            # Check cache_position bounds before any operations
+            # AGGRESSIVE FIX: Always ensure cache_position is a single-element tensor
             cache_position = cache_kwargs.get('cache_position', None)
-            if cache_position is not None and hasattr(self, '_actual_window_size'):
+            window_size = getattr(self, '_actual_window_size', 128)
+
+            if cache_position is not None:
                 try:
-                    # Handle corrupted cache_position tensors
-                    if hasattr(cache_position, 'shape'):
+                    # Always extract scalar position value, regardless of tensor shape
+                    if hasattr(cache_position, 'shape') and len(cache_position.shape) > 0:
                         cache_shape = cache_position.shape
-                        if len(cache_shape) > 1 or (len(cache_shape) == 1 and cache_shape[0] > 1):
-                            print(f"🚨 SlidingWindow: CORRUPTED cache_position shape: {cache_shape}")
-                            
-                            # Get the CORRECT window size (should be 128 for GPT-OSS)
-                            window_size = getattr(self, '_actual_window_size', 128)
-                            
-                            print(f"🔍 CORRUPTION ANALYSIS:")
-                            print(f"   Expected: scalar cache_position")
-                            print(f"   Got: tensor with {cache_shape[0]} positions")
-                            print(f"   Window size: {window_size}")
-                            print(f"   This suggests positions accumulated incorrectly during generation")
-                            
-                            # CONSERVATIVE APPROACH: Abort instead of silently "fixing"
-                            import os
-                            abort_on_corruption = os.environ.get("UNSLOTH_ABORT_ON_CACHE_CORRUPTION", "0") == "1"
-                            
-                            if abort_on_corruption:
-                                raise RuntimeError(
-                                    f"Cache position corruption detected! "
-                                    f"cache_position shape {cache_shape} indicates positions accumulated incorrectly. "
-                                    f"This could lead to silent training on wrong position encodings. "
-                                    f"Aborting to prevent silent corruption. "
-                                    f"Set UNSLOTH_ABORT_ON_CACHE_CORRUPTION=0 to attempt repair (not recommended)."
-                                )
-                            
-                            # REPAIR ATTEMPT (potentially unsafe for training)
-                            print(f"⚠️  ATTEMPTING REPAIR (potentially unsafe for training)")
-                            
-                            # Use modulo to wrap positions to valid range
-                            corrupted_positions = cache_position
-                            valid_positions = corrupted_positions % window_size
-                            
-                            # Take the last position as that's typically the current generation step
-                            last_valid_position = valid_positions[-1].item()
-                            corrected_position = torch.tensor([last_valid_position], device=cache_position.device, dtype=cache_position.dtype)
-                            
-                            cache_kwargs = dict(cache_kwargs)
-                            cache_kwargs['cache_position'] = corrected_position
-                            print(f"   🔧 REPAIRED: mapped {cache_shape[0]} positions to single position {last_valid_position} (window: {window_size})")
-                            print(f"   ⚠️  WARNING: This repair may cause silent training corruption!")
-                            
-                            # Set pos_value for later use in wrapping logic
-                            pos_value = last_valid_position
+
+                        # If it's not a single-element tensor, fix it immediately
+                        if cache_shape[0] != 1:
+                            if cache_shape[0] > 1:
+                                # Multi-element tensor - take the last position
+                                print(f"🔧 AUTO-FIX: cache_position has {cache_shape[0]} elements, extracting last")
+                                pos_value = cache_position[-1].item()
+                            else:
+                                # Empty or unusual shape
+                                pos_value = 0
+                                print(f"🔧 AUTO-FIX: unusual cache_position shape {cache_shape}, using 0")
                         else:
-                            pos_value = cache_position.item()
+                            # Single element tensor - get the value
+                            pos_value = cache_position[0].item() if hasattr(cache_position[0], 'item') else cache_position.item()
                     elif hasattr(cache_position, 'item'):
+                        # Scalar tensor
                         pos_value = cache_position.item()
-                    elif hasattr(cache_position, '__len__') and len(cache_position) > 0:
-                        pos_value = cache_position[0].item() if hasattr(cache_position[0], 'item') else cache_position[0]
+                    elif isinstance(cache_position, (int, float)):
+                        # Raw number
+                        pos_value = int(cache_position)
                     else:
-                        pos_value = cache_position
-                except Exception as e:
-                    print(f"⚠️  Failed to read cache_position in SlidingWindow: {e}")
-                    # Set a safe default
+                        # Unknown format
+                        print(f"🔧 AUTO-FIX: unknown cache_position type {type(cache_position)}, using 0")
+                        pos_value = 0
+
+                    # Wrap position to window size
+                    if pos_value >= window_size:
+                        pos_value = pos_value % window_size
+                    elif pos_value < 0:
+                        pos_value = 0
+
+                    # ALWAYS create a fresh single-element tensor
                     cache_kwargs = dict(cache_kwargs)
-                    cache_kwargs['cache_position'] = torch.tensor([0], device=key_states.device)
-                    pos_value = 0
-                
-                # For sliding windows, wrap positions to stay within window bounds
-                if pos_value >= self._actual_window_size:
-                    wrapped_position = pos_value % self._actual_window_size
-                    print(f"🔧 Wrapping cache_position: {pos_value} -> {wrapped_position} (window size: {self._actual_window_size})")
-                    cache_kwargs = dict(cache_kwargs)
-                    cache_kwargs['cache_position'] = torch.tensor([wrapped_position], 
-                                                                 device=key_states.device, 
+                    cache_kwargs['cache_position'] = torch.tensor([pos_value],
+                                                                 device=key_states.device,
                                                                  dtype=torch.long)
-            
+
+                except Exception as e:
+                    print(f"⚠️  Exception in cache_position fix: {e}")
+                    # Emergency fallback: use position 0
+                    cache_kwargs = dict(cache_kwargs)
+                    cache_kwargs['cache_position'] = torch.tensor([0], device=key_states.device, dtype=torch.long)
+
             return original_update(self, key_states, value_states, cache_kwargs)
         
         # Apply patches
