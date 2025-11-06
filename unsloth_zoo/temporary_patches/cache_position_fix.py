@@ -64,9 +64,21 @@ def patch_cache_position_generation():
                     if len(patch_cache_position_generation.position_history) > 50:
                         patch_cache_position_generation.position_history.pop(0)
                     
-                    # Only prevent positions that are way beyond sliding window (not just >=)
-                    # Position equal to sliding_window_size is normal (means slide to next position)
-                    if pos_value > sliding_window_size + 100:  # Only fix truly problematic positions
+                    # Enhanced logging to understand the position sequence
+                    if len(patch_cache_position_generation.position_history) % 10 == 0:
+                        print(f"📊 Position #{len(patch_cache_position_generation.position_history)}: {pos_value} (window: {sliding_window_size})")
+                        if len(patch_cache_position_generation.position_history) >= 10:
+                            recent = patch_cache_position_generation.position_history[-10:]
+                            print(f"   Last 10 positions: {recent}")
+                            # Check for suspicious jumps
+                            diffs = [recent[i] - recent[i-1] for i in range(1, len(recent))]
+                            print(f"   Position deltas: {diffs}")
+                            if any(abs(d) > 100 for d in diffs):
+                                print(f"   ⚠️  Large position jump detected!")
+                    
+                    # TEMPORARILY DISABLE POSITION FIXES to see the real issue
+                    # The position wrapping might be masking the root cause
+                    if False and pos_value > sliding_window_size + 100:  # DISABLED
                         print(f"🔧 PREVENTING cache_position overflow: {pos_value} -> {pos_value % sliding_window_size}")
                         print(f"   Recent position history: {patch_cache_position_generation.position_history[-10:]}")
                         # Wrap around instead of clamping to preserve position relationships
@@ -134,8 +146,8 @@ def patch_sliding_window_cache_creation():
                 else:
                     pos_value = cache_position
                 
-                # Only wrap positions that are way beyond sliding window
-                if pos_value > self._actual_window_size + 100:
+                # TEMPORARILY DISABLE POSITION WRAPPING to see the real issue
+                if False and pos_value > self._actual_window_size + 100:  # DISABLED
                     wrapped_position = pos_value % self._actual_window_size
                     print(f"🔧 Wrapping cache_position: {pos_value} -> {wrapped_position} (window size: {self._actual_window_size})")
                     cache_kwargs = dict(cache_kwargs)
