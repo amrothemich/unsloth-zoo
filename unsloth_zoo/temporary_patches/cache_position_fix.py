@@ -84,9 +84,9 @@ def patch_sliding_window_cache_creation():
         # Store original init
         original_init = SlidingWindowLayer.__init__
         
-        def safe_init(self, max_cache_len, max_batch_size, heads, head_dim, dtype=torch.float32, device=None):
-            # Call original init
-            original_init(self, max_cache_len, max_batch_size, heads, head_dim, dtype, device)
+        def safe_init(self, max_cache_len, sliding_window=None, **kwargs):
+            # Call original init with all the parameters it expects
+            original_init(self, max_cache_len=max_cache_len, sliding_window=sliding_window, **kwargs)
             
             # Store the actual window size for bounds checking
             self._actual_window_size = max_cache_len
