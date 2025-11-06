@@ -1296,12 +1296,15 @@ TEMPORARY_PATCHES.append(patch_GptOssModel)
 
 def patch_GptOssForCausalLM():
     """Patch the CausalLM forward to use inference mode during eval"""
+    print("🔧 patch_GptOssForCausalLM: Starting patch application...")
     # Try to import - if it doesn't exist, this model isn't being used
     try:
         import transformers.models.gpt_oss.modeling_gpt_oss
         GptOssForCausalLM = transformers.models.gpt_oss.modeling_gpt_oss.GptOssForCausalLM
+        print(f"✅ Successfully imported GptOssForCausalLM: {GptOssForCausalLM}")
     except Exception as e:
         # GptOss model not available, skip this patch
+        print(f"❌ Failed to import GptOssForCausalLM: {e}")
         return
 
     # Get the original forward - might already be patched by unsloth
@@ -1368,10 +1371,18 @@ def patch_GptOssForCausalLM():
 
     GptOssForCausalLM.prepare_inputs_for_generation = fixed_prepare_inputs_for_generation
     logger.info("Unsloth: Patched GptOssForCausalLM.prepare_inputs_for_generation to fix cache_position")
+    print("✅ Successfully patched GptOssForCausalLM.prepare_inputs_for_generation!")
+    print(f"   New method: {GptOssForCausalLM.prepare_inputs_for_generation}")
 pass
 
 # CRITICAL: Execute the patch immediately on module import!
+print("="*80)
+print("🚨 EXECUTING patch_GptOssForCausalLM() NOW!")
+print("="*80)
 patch_GptOssForCausalLM()
+print("="*80)
+print("✅ patch_GptOssForCausalLM() COMPLETED!")
+print("="*80)
 
 TEMPORARY_PATCHES.append(patch_GptOssForCausalLM)
 
