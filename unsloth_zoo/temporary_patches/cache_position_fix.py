@@ -354,15 +354,19 @@ def patch_grpo_cache_reset():
         original_prepare_inputs = GenerationMixin.prepare_inputs_for_generation
 
         def safe_prepare_inputs_for_generation(self, input_ids, **kwargs):
+            print(f"🔍 GenerationMixin.prepare_inputs_for_generation CALLED! input_ids shape: {input_ids.shape if hasattr(input_ids, 'shape') else 'N/A'}")
             # Get the prepared inputs from the original method
             model_inputs = original_prepare_inputs(self, input_ids, **kwargs)
 
             # Get sliding window size
             sliding_window = getattr(self.config, 'sliding_window', None)
+            print(f"   Sliding window: {sliding_window}")
+            print(f"   model_inputs keys: {list(model_inputs.keys())}")
 
             # Ensure cache_position is always a single-element tensor, never accumulated
             if "cache_position" in model_inputs and model_inputs["cache_position"] is not None:
                 cache_pos = model_inputs["cache_position"]
+                print(f"   cache_position found: shape={cache_pos.shape if hasattr(cache_pos, 'shape') else 'N/A'}")
 
                 # Check if it's accumulated (multiple elements)
                 if hasattr(cache_pos, 'shape') and len(cache_pos.shape) > 0 and cache_pos.shape[0] > 1:

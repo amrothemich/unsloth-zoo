@@ -1325,42 +1325,49 @@ def patch_GptOssForCausalLM():
 
     # CRITICAL FIX: Patch prepare_inputs_for_generation to fix cache_position
     # This is the LAST point before the forward pass where we can fix cache_position
-    if hasattr(GptOssForCausalLM, 'prepare_inputs_for_generation'):
-        original_prepare_inputs = GptOssForCausalLM.prepare_inputs_for_generation
+    # Get the original method from the MRO (might be inherited from GenerationMixin)
+    original_prepare_inputs = GptOssForCausalLM.prepare_inputs_for_generation
 
-        def fixed_prepare_inputs_for_generation(self, input_ids, **kwargs):
-            # Call original method
-            model_inputs = original_prepare_inputs(self, input_ids, **kwargs)
+    def fixed_prepare_inputs_for_generation(self, input_ids, **kwargs):
+        print(f"🔍 GptOss prepare_inputs_for_generation called!")
+        # Call original method
+        model_inputs = original_prepare_inputs(self, input_ids, **kwargs)
 
-            # FIX cache_position if it exists and is corrupted
-            if "cache_position" in model_inputs and model_inputs["cache_position"] is not None:
-                cache_pos = model_inputs["cache_position"]
-                sliding_window = getattr(self.config, 'sliding_window', None)
+        # FIX cache_position if it exists and is corrupted
+        if "cache_position" in model_inputs and model_inputs["cache_position"] is not None:
+            cache_pos = model_inputs["cache_position"]
+            sliding_window = getattr(self.config, 'sliding_window', None)
 
-                # Check if cache_position has multiple elements (corrupted)
-                if hasattr(cache_pos, 'shape') and len(cache_pos.shape) > 0 and cache_pos.shape[0] > 1:
-                    print(f"🔧 GPTOSS FIX: cache_position corrupted with {cache_pos.shape[0]} elements")
-                    print(f"   Values (first 10): {cache_pos[:10].tolist()}")
+            print(f"   cache_position shape: {cache_pos.shape if hasattr(cache_pos, 'shape') else 'N/A'}")
 
-                    # Extract last position
-                    last_pos = cache_pos[-1].item()
+            # Check if cache_position has multiple elements (corrupted)
+            if hasattr(cache_pos, 'shape') and len(cache_pos.shape) > 0 and cache_pos.shape[0] > 1:
+                print(f"🔧 GPTOSS FIX: cache_position corrupted with {cache_pos.shape[0]} elements")
+                print(f"   Values (first 10): {cache_pos[:10].tolist()}")
 
-                    # Wrap to sliding window if applicable
-                    if sliding_window is not None and last_pos >= sliding_window:
-                        wrapped_pos = last_pos % sliding_window
-                        print(f"   Wrapping {last_pos} -> {wrapped_pos} (window: {sliding_window})")
-                        last_pos = wrapped_pos
+                # Extract last position
+                last_pos = cache_pos[-1].item()
 
-                    # Create single-element tensor
-                    model_inputs["cache_position"] = torch.tensor([last_pos],
-                                                                   device=cache_pos.device,
-                                                                   dtype=cache_pos.dtype)
-                    print(f"   ✅ Fixed to: {model_inputs['cache_position']}")
+                # Wrap to sliding window if applicable
+                if sliding_window is not None and last_pos >= sliding_window:
+                    wrapped_pos = last_pos % sliding_window
+                    print(f"   Wrapping {last_pos} -> {wrapped_pos} (window: {sliding_window})")
+                    last_pos = wrapped_pos
 
-            return model_inputs
+                # Create single-element tensor
+                model_inputs["cache_position"] = torch.tensor([last_pos],
+                                                               device=cache_pos.device,
+                                                               dtype=cache_pos.dtype)
+                print(f"   ✅ Fixed to: {model_inputs['cache_position']}")
+            else:
+                print(f"   ✅ cache_position OK (single element)")
+        else:
+            print(f"   No cache_position in model_inputs")
 
-        GptOssForCausalLM.prepare_inputs_for_generation = fixed_prepare_inputs_for_generation
-        logger.info("Unsloth: Patched GptOssForCausalLM.prepare_inputs_for_generation to fix cache_position")
+        return model_inputs
+
+    GptOssForCausalLM.prepare_inputs_for_generation = fixed_prepare_inputs_for_generation
+    logger.info("Unsloth: Patched GptOssForCausalLM.prepare_inputs_for_generation to fix cache_position")
 pass
 TEMPORARY_PATCHES.append(patch_GptOssForCausalLM)
 
