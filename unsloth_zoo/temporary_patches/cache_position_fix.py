@@ -54,10 +54,13 @@ def patch_cache_position_generation():
                 else:
                     pos_value = cache_position
                 
-                if pos_value >= sliding_window_size:
-                    print(f"🔧 PREVENTING cache_position overflow: {pos_value} -> {sliding_window_size - 1}")
-                    # Create a corrected cache_position
-                    corrected_position = torch.tensor([sliding_window_size - 1], 
+                # Only prevent positions that are way beyond sliding window (not just >=)
+                # Position equal to sliding_window_size is normal (means slide to next position)
+                if pos_value > sliding_window_size + 100:  # Only fix truly problematic positions
+                    print(f"🔧 PREVENTING cache_position overflow: {pos_value} -> {pos_value % sliding_window_size}")
+                    # Wrap around instead of clamping to preserve position relationships
+                    wrapped_position = pos_value % sliding_window_size
+                    corrected_position = torch.tensor([wrapped_position], 
                                                      device=cache_position.device, 
                                                      dtype=cache_position.dtype)
                     updated_kwargs["cache_position"] = corrected_position
@@ -106,8 +109,8 @@ def patch_sliding_window_cache_creation():
                 else:
                     pos_value = cache_position
                 
-                # Use modulo to wrap around the sliding window
-                if pos_value >= self._actual_window_size:
+                # Only wrap positions that are way beyond sliding window
+                if pos_value > self._actual_window_size + 100:
                     wrapped_position = pos_value % self._actual_window_size
                     print(f"🔧 Wrapping cache_position: {pos_value} -> {wrapped_position} (window size: {self._actual_window_size})")
                     cache_kwargs = dict(cache_kwargs)

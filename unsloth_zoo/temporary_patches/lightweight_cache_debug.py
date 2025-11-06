@@ -84,7 +84,20 @@ def patch_lightweight_cache_debugging():
                         f.write(f"  Cache ID: {cache_id}\n")
                         f.write(f"  Key states shape: {key_states.shape}\n")
                         f.write(f"  Value states shape: {value_states.shape}\n")
-                        f.write(f"  Cache kwargs: {cache_kwargs}\n")
+                        # Safely log cache kwargs without accessing corrupted tensors
+                        safe_cache_kwargs = {}
+                        for k, v in cache_kwargs.items():
+                            try:
+                                if hasattr(v, 'shape'):
+                                    safe_cache_kwargs[k] = f"tensor({v.shape})"
+                                elif hasattr(v, 'item'):
+                                    # Don't call .item() on potentially corrupted tensors
+                                    safe_cache_kwargs[k] = f"scalar_tensor(shape={getattr(v, 'shape', 'unknown')})"
+                                else:
+                                    safe_cache_kwargs[k] = str(v)
+                            except Exception as e:
+                                safe_cache_kwargs[k] = f"<corrupted: {e}>"
+                        f.write(f"  Cache kwargs: {safe_cache_kwargs}\n")
                         if hasattr(self, 'keys') and self.keys is not None:
                             f.write(f"  Cache keys shape: {self.keys.shape}\n")
                             f.write(f"  Cache keys device: {self.keys.device}\n")
