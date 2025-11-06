@@ -1369,6 +1369,10 @@ def patch_GptOssForCausalLM():
     GptOssForCausalLM.prepare_inputs_for_generation = fixed_prepare_inputs_for_generation
     logger.info("Unsloth: Patched GptOssForCausalLM.prepare_inputs_for_generation to fix cache_position")
 pass
+
+# CRITICAL: Execute the patch immediately on module import!
+patch_GptOssForCausalLM()
+
 TEMPORARY_PATCHES.append(patch_GptOssForCausalLM)
 
 # Note: The fix for unsloth's RL prediction_step is now in unsloth/unsloth/models/rl.py
