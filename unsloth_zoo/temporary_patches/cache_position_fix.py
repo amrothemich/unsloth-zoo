@@ -110,18 +110,29 @@ def patch_cache_position_generation():
                             if any(abs(d) > 100 for d in diffs):
                                 print(f"   ⚠️  Large position jump detected!")
                     
-                    # For sliding windows, positions should wrap around
-                    # Position 128 should become 0, 129->1, etc.
-                    if sliding_window_size is not None and pos_value >= sliding_window_size:
-                        wrapped_position = pos_value % sliding_window_size
-                        print(f"🔧 WRAPPING cache_position: {pos_value} -> {wrapped_position} (window: {sliding_window_size})")
-                        print(f"   Recent position history: {patch_cache_position_generation.position_history[-10:]}")
-                        print(f"   This is normal for sliding windows - positions wrap around")
-                        # Wrap around to preserve sliding window semantics
-                        corrected_position = torch.tensor([wrapped_position], 
-                                                         device=cache_position.device, 
-                                                         dtype=cache_position.dtype)
-                        updated_kwargs["cache_position"] = corrected_position
+                    # CRITICAL: Always ensure cache_position doesn't exceed sliding window
+                    if sliding_window_size is not None:
+                        # For sliding windows, positions should wrap around
+                        # Position 128 should become 0, 129->1, etc.
+                        if pos_value >= sliding_window_size:
+                            wrapped_position = pos_value % sliding_window_size
+                            print(f"🔧 WRAPPING cache_position: {pos_value} -> {wrapped_position} (window: {sliding_window_size})")
+                            print(f"   Recent position history: {patch_cache_position_generation.position_history[-10:]}")
+                            print(f"   This is normal for sliding windows - positions wrap around")
+                            # Wrap around to preserve sliding window semantics
+                            corrected_position = torch.tensor([wrapped_position], 
+                                                             device=cache_position.device, 
+                                                             dtype=cache_position.dtype)
+                            updated_kwargs["cache_position"] = corrected_position
+                        else:
+                            # Even if position is valid, ensure it's a proper single-element tensor
+                            # This prevents accumulation from happening
+                            if hasattr(cache_position, 'shape') and len(cache_position.shape) > 0 and cache_position.shape[0] > 1:
+                                print(f"🔧 PREVENTING ACCUMULATION: cache_position has {cache_position.shape[0]} elements, using last one")
+                                corrected_position = torch.tensor([pos_value], 
+                                                                 device=cache_position.device, 
+                                                                 dtype=cache_position.dtype)
+                                updated_kwargs["cache_position"] = corrected_position
                     elif pos_value < 0:
                         # Negative positions are definitely wrong
                         print(f"🔧 FIXING negative cache_position: {pos_value} -> 0")
