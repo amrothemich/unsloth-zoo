@@ -361,6 +361,13 @@ def patch_grpo_cache_reset():
     except Exception as e:
         print(f"Warning: Failed to patch GRPO cache reset: {e}")
 
+# Apply patches immediately on module import
+patch_cache_position_generation()
+patch_sliding_window_cache_creation()
+patch_flex_attention_safety()
+patch_grpo_cache_reset()
+
+# Also add to list for tracking
 TEMPORARY_PATCHES.append(patch_cache_position_generation)
 TEMPORARY_PATCHES.append(patch_sliding_window_cache_creation)
 TEMPORARY_PATCHES.append(patch_flex_attention_safety)
