@@ -78,7 +78,10 @@ def patch_lightweight_cache_debugging():
                     with open(patch_lightweight_cache_debugging.log_path, 'a') as f:
                         f.write("🔍 WATCHING FOR TORCH.COMPILE MESSAGES AROUND FAILURE\n\n")
                 
-                if 2590 <= call_count <= 2600:
+                # Log around failure points and cache boundaries
+                # Position 63 seems to be where it fails, and positions are duplicated
+                # So around call 126 (63*2) we might see issues
+                if (1440 <= call_count <= 1450) or (call_count <= 20) or (120 <= call_count <= 130) or (250 <= call_count <= 260):
                     with open(patch_lightweight_cache_debugging.log_path, 'a') as f:
                         f.write(f"\n🔍 CRITICAL RANGE - Call #{call_count}:\n")
                         f.write(f"  Cache ID: {cache_id}\n")

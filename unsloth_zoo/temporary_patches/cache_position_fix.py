@@ -103,10 +103,11 @@ def patch_cache_position_generation():
                     # For sliding windows, positions should wrap around
                     # Position 128 should become 0, 129->1, etc.
                     if sliding_window_size is not None and pos_value >= sliding_window_size:
-                        print(f"🔧 PREVENTING cache_position overflow: {pos_value} -> {pos_value % sliding_window_size}")
-                        print(f"   Recent position history: {patch_cache_position_generation.position_history[-10:]}")
-                        # Wrap around instead of clamping to preserve position relationships
                         wrapped_position = pos_value % sliding_window_size
+                        print(f"🔧 WRAPPING cache_position: {pos_value} -> {wrapped_position} (window: {sliding_window_size})")
+                        print(f"   Recent position history: {patch_cache_position_generation.position_history[-10:]}")
+                        print(f"   This is normal for sliding windows - positions wrap around")
+                        # Wrap around to preserve sliding window semantics
                         corrected_position = torch.tensor([wrapped_position], 
                                                          device=cache_position.device, 
                                                          dtype=cache_position.dtype)
