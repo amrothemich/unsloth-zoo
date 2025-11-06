@@ -8,27 +8,34 @@ import modal
 # Persistent volume for state
 state_volume = modal.Volume.from_name("cache-reproducer-state", create_if_missing=True)
 
-# Image with pinned packages
+# Image with exact Databricks package versions - install everything together for compatibility
 image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install(["git", "wget", "curl"])
-    .pip_install(
-        "torch==2.6.0+cu124",
-        index_url="https://download.pytorch.org/whl/cu124"
-    )
-    .pip_install([
-        "transformers==4.56.2",
-        "datasets==3.5.0",
-        "accelerate==1.5.2",
-        "trl==0.23.0",
-        "peft==0.17.1",
-        "bitsandbytes==0.48.2",
-        "numpy==1.26.4",
-        "safetensors==0.4.4"
-    ])
     .run_commands([
-        "pip install --upgrade git+https://github.com/amrothemich/unsloth.git@fix-grpo#egg=unsloth[cu124-torch260]",
-        "pip install --upgrade git+https://github.com/amrothemich/unsloth-zoo.git@fix-grpo"
+        # Install ALL packages in single command for dependency resolution
+        # Let pip resolve compatible versions for conflicting packages
+        """pip install --upgrade \
+            'torch==2.6.0+cu124' \
+            --index-url https://download.pytorch.org/whl/cu124 && \
+        pip install --upgrade \
+            transformers==4.56.2 \
+            datasets==3.5.0 \
+            accelerate==1.5.2 \
+            trl==0.23.0 \
+            peft==0.17.1 \
+            bitsandbytes==0.48.2 \
+            numpy==1.26.4 \
+            safetensors==0.4.4 \
+            'tokenizers>=0.22.0,<=0.23.0' \
+            'huggingface-hub>=0.34.0' \
+            packaging==25.0 \
+            protobuf==6.33.0 \
+            requests==2.32.3 \
+            tqdm==4.67.1 \
+            psutil==7.1.3 \
+            'git+https://github.com/amrothemich/unsloth.git@fix-grpo#egg=unsloth[cu124-torch260]' \
+            'git+https://github.com/amrothemich/unsloth-zoo.git@c8f0afc#egg=unsloth-zoo'"""
     ])
 )
 
@@ -46,6 +53,7 @@ app = modal.App("cache-reproducer")
         "UNSLOTH_ENABLE_LOGGING": "1",
         "UNSLOTH_CACHE_DEBUG_LOG_DIR": "/state/cache_logs",
         "TORCH_USE_CUDA_DSA": "1",
+        "UNSLOTH_ABORT_ON_CACHE_CORRUPTION": "1",  # Enable conservative abort mode
     }
 )
 def reproduce_cache_issue():
@@ -61,6 +69,19 @@ def reproduce_cache_issue():
     print("REPRODUCING CACHE POSITION OVERFLOW ISSUE")
     print("="*80)
     
+    # Verify we have the latest version with the critical fix
+    import unsloth_zoo
+    print(f"📦 Using unsloth_zoo from: {unsloth_zoo.__file__}")
+    
+    # Check if our critical fix is present
+    from unsloth_zoo.temporary_patches.cache_position_fix import patch_sliding_window_cache_creation
+    import inspect
+    source = inspect.getsource(patch_sliding_window_cache_creation)
+    has_critical_fix = "CRITICAL FIX: Use sliding_window (128), NOT max_cache_len (3299)!" in source
+    print(f"🔍 Critical window size fix present: {has_critical_fix}")
+    if not has_critical_fix:
+        raise RuntimeError("CRITICAL FIX NOT FOUND! Modal is using old cached version. Please force rebuild image.")
+    
     # Create cache log directory
     os.makedirs("/state/cache_logs", exist_ok=True)
     
@@ -69,9 +90,12 @@ def reproduce_cache_issue():
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name="unsloth/gpt-oss-20b-unsloth-bnb-4bit",
         max_seq_length=3400,  # Large to trigger cache overflow
-        dtype=None,
+        dtype=None,  # Let unsloth auto-detect proper dtype (revert to working config)
         load_in_4bit=True,
     )
+    
+    # For training, we need to prepare the model properly
+    FastLanguageModel.for_training(model)
     
     # Add LoRA for training
     model = FastLanguageModel.get_peft_model(
@@ -196,6 +220,82 @@ Additional Context: """ + "detailed medical assessment data requiring thorough a
     print("="*80)
     
     try:
+        # First test: Run a single forward + backward pass to verify cache fix
+        print("\n" + "="*60)
+        print("🧪 PHASE 1: TESTING SINGLE FORWARD/BACKWARD PASS")
+        print("="*60)
+        
+        # Get a single batch for testing
+        test_sample = train_dataset[0]
+        test_inputs = tokenizer(test_sample['prompt'], return_tensors="pt", max_length=512, truncation=True, padding=True)
+        
+        # Move to device and ensure proper dtype
+        device = next(model.parameters()).device
+        test_inputs = {k: v.to(device) for k, v in test_inputs.items()}
+        
+        # Note: Model is already in bfloat16 from from_pretrained, don't cast bitsandbytes models
+        print(f"📊 Model dtype: {next(model.parameters()).dtype}")
+        
+        print(f"📊 Test input shape: {test_inputs['input_ids'].shape}")
+        print("🚀 Running forward pass...")
+        
+        # Ensure model is in training mode and use proper dtype
+        model.train()
+        
+        # Test forward pass with try-catch for better error handling
+        try:
+            outputs = model(**test_inputs, labels=test_inputs['input_ids'])
+            loss = outputs.loss
+        except Exception as e:
+            print(f"❌ Forward pass failed: {e}")
+            # Try without labels first to isolate the issue
+            print("🔄 Trying forward pass without labels...")
+            outputs = model(**test_inputs)
+            print(f"✅ Forward pass without labels works! Output shape: {outputs.logits.shape}")
+            
+            # Now try with labels but ensure they're properly formatted
+            labels = test_inputs['input_ids'].clone()
+            outputs = model(**test_inputs, labels=labels)
+            loss = outputs.loss
+        
+        print(f"✅ Forward pass successful! Loss: {loss.item():.4f}")
+        print("🔄 Running backward pass...")
+        
+        loss.backward()
+        print("✅ BACKWARD PASS SUCCESSFUL - Cache fix is working!")
+        
+        # Clear gradients for training
+        model.zero_grad()
+        
+        # Now test evaluation mode
+        print("\n" + "="*60)
+        print("🧪 PHASE 2: TESTING EVALUATION MODE")
+        print("="*60)
+        
+        model.eval()
+        with torch.no_grad():
+            eval_outputs = model(**test_inputs)
+            print(f"✅ EVALUATION SUCCESSFUL! Output shape: {eval_outputs.logits.shape}")
+        
+        # Test generation to ensure cache works in generation
+        print("🎯 Testing generation...")
+        with torch.no_grad():
+            generated = model.generate(
+                **test_inputs,
+                max_new_tokens=20,
+                do_sample=False,
+                use_cache=True,
+                pad_token_id=tokenizer.eos_token_id
+            )
+            print(f"✅ GENERATION SUCCESSFUL! Generated shape: {generated.shape}")
+        
+        model.train()  # Back to training mode
+        
+        # Now run full GRPO training
+        print("\n" + "="*60)
+        print("🚀 PHASE 3: FULL GRPO TRAINING")
+        print("="*60)
+        
         # Run training with progress monitoring
         import time
         import threading
@@ -225,8 +325,17 @@ Additional Context: """ + "detailed medical assessment data requiring thorough a
         trainer.train()
         training_active = False
         
-        print("✅ Training completed - no cache issue reproduced")
-        return {"success": True, "cache_issue_reproduced": False}
+        print("✅ GRPO TRAINING COMPLETED SUCCESSFULLY!")
+        print("✅ CONFIRMED: Forward pass, backward pass, evaluation, and GRPO training all work!")
+        
+        return {
+            "success": True, 
+            "cache_issue_reproduced": False,
+            "forward_pass_success": True,
+            "backward_pass_success": True,
+            "evaluation_success": True,
+            "grpo_training_success": True
+        }
         
     except Exception as e:
         error_msg = str(e)

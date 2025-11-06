@@ -1,0 +1,297 @@
+✓ Initialized. View run at 
+https://modal.com/apps/amrothemich/main/ap-o6acNJEGNZmNWlHD3hmdX4
+✓ Created objects.
+├── 🔨 Created mount 
+│   /Users/aaron/Documents/unsloth_ecosystem/unsloth-zoo/modal_cache_reproducer.
+│   py
+├── 🔨 Created function reproduce_cache_issue.
+└── 🔨 Created function check_logs.
+🚀 Running minimal cache overflow reproducer with 60min timeout...
+Starting training function...
+Skipping import of cpp extensions due to incompatible torch version 2.6.0+cu124 for torchao version 0.14.1             Please see https://github.com/pytorch/ao/issues/2919 for more info
+/root/modal_cache_reproducer.py:66: UserWarning: WARNING: Unsloth should be imported before trl, transformers, peft to ensure all optimizations are applied. Your code may run slower or encounter memory issues without these optimizations.
+
+Please restructure your imports with 'import unsloth' at the top of your file.
+  from unsloth import FastLanguageModel
+Unsloth: Patching protobuf.MessageFactory.GetPrototype
+🦥 Unsloth: Will patch your computer to enable 2x faster free finetuning.
+🔧 CRITICAL: Adding bitsandbytes patch to TEMPORARY_PATCHES list (current length: 0)
+🔧 CRITICAL: bitsandbytes patch added, new length: 1
+[unsloth_zoo.log|INFO]Unsloth: set VIDEO_TOTAL_PIXELS: 90316800
+[unsloth_zoo.log|INFO]Unsloth: Patched Linear4bit.forward.
+[unsloth_zoo.log|INFO]Unsloth: Patched Linear4bit.forward.
+🔧 CRITICAL: COMPREHENSIVE PATCH VERSION 2025-11-05-20:15 - Attempting to patch ALL bitsandbytes Linear4bit forward...
+🔧 CRITICAL: Successfully imported bitsandbytes modules
+🔧 CRITICAL: Successfully patched bitsandbytes.nn.modules.Linear4bit
+🔧 CRITICAL: Successfully patched bitsandbytes.nn.Linear4bit
+🔧 CRITICAL: Patched 2 Linear4bit locations
+✅ Applied minimal cache device fix (preserves normal initialization)
+✅ Applied cache_position generation fix (prevents overflow at source)
+✅ Applied sliding window cache bounds checking
+✅ Applied flex attention safety patch
+📝 Lightweight cache debug logging to: /state/cache_logs/unsloth_cache_lightweight_20251106_051011.log
+✅ Applied lightweight cache debugging (minimal overhead)
+[unsloth_zoo.log|INFO]Unsloth: Patched Gemma3Processor.__call__.
+[unsloth_zoo.log|INFO]Unsloth: Patched Gemma3RMSNorm.forward.
+[unsloth_zoo.log|INFO]Unsloth: Patched Gemma3Attention.forward.
+[unsloth_zoo.log|INFO]Unsloth: Patched AutoHfQuantizer.merge_quantization_configs.
+[unsloth_zoo.log|ERROR]Unsloth: Skipped CsmDepthDecoderForCausalLM.forward
+Reason: New function removed output_attentions and output_hidden_states
+[unsloth_zoo.log|INFO]Unsloth: Patched CsmDepthDecoderForCausalLM.forward.
+[unsloth_zoo.log|ERROR]Unsloth: Skipped CsmForConditionalGeneration.forward
+Reason: New function removed output_attentions and output_hidden_states
+[unsloth_zoo.log|INFO]Unsloth: Patched CsmForConditionalGeneration.forward.
+[unsloth_zoo.log|INFO]Unsloth: Patched CsmForConditionalGeneration._merge_input_ids_with_input_values.
+[unsloth_zoo.log|INFO]Unsloth: Patched Gemma3nTextAltUp.predict.
+[unsloth_zoo.log|INFO]Unsloth: Patched Gemma3nTextAltUp.correct.
+[unsloth_zoo.log|INFO]Unsloth: Patched Gemma3nTextAltUp.scale_corrected_output.
+[unsloth_zoo.log|ERROR]Unsloth: Skipped Gemma3nModel.get_placeholder_mask
+Reason: Parameter 'input_ids' changed from optional to required
+[unsloth_zoo.log|ERROR]==================
+Failed to patch Please install triton_kernels. Error
+No module named 'triton_kernels'
+==================
+
+/usr/local/lib/python3.12/site-packages/unsloth_zoo/temporary_patches/gpt_oss.py:1342: FutureWarning: `torch.distributed.reduce_op` is deprecated, please use `torch.distributed.ReduceOp` instead
+  if isinstance(obj, torch.nn.Module):
+[unsloth_zoo.log|INFO]Unsloth: Wrapped existing requires_grad hooks to handle inference mode
+[unsloth_zoo.log|INFO]Unsloth: Patched PixtralAttention.__init__.
+[unsloth_zoo.log|INFO]Unsloth: Patched PixtralAttention.forward.
+[unsloth_zoo.log|INFO]Unsloth: Patched transformers.integrations.mxfp4.convert_moe_packed_tensors.
+[unsloth_zoo.log|INFO]Unsloth: Patched transformers.integrations.mxfp4.dequantize.
+[unsloth_zoo.log|INFO]Unsloth: Successfully added convert_moe_packed_tensors_cpu function.
+🦥 Unsloth Zoo will now patch everything to make training faster!
+================================================================================
+REPRODUCING CACHE POSITION OVERFLOW ISSUE
+================================================================================
+📦 Using unsloth_zoo from: /usr/local/lib/python3.12/site-packages/unsloth_zoo/__init__.py
+🔍 Critical window size fix present: True
+Loading GPT-OSS-20B model...
+Unsloth: Bitsandbytes >= 0.46.0 supports torch.compile - enabling.
+Unsloth: Patched cross entropy losses.
+No module named 'causal_conv1d' No module named 'causal_conv1d'
+Unsloth: Failed compiling causal_conv1d
+Unsloth: Failed compiling mamba_ssm
+Unsloth: Patching LoRA to make it faster
+Unsloth: Not an error, but could not optimize some PEFT modules.
+[]
+Unsloth: Will not compile SiglipEncoder since it looks like a vision encoder!
+Unsloth: Failed compiling function SiglipEncoder since there is padding done.
+Unsloth: Will not compile SiglipTextTransformer since it looks like a vision encoder!
+Unsloth: Failed compiling function SiglipTextTransformer since there is padding done.
+Unsloth: Will not compile SiglipVisionTransformer since it looks like a vision encoder!
+Unsloth: Compiled module SiglipVisionEmbeddings.
+Unsloth: Compiled module SiglipTextEmbeddings.
+Unsloth: Compiled module SiglipMLP.
+Unsloth: Compiled module SiglipMultiheadAttentionPoolingHead.
+Unsloth: Fast Attention patch for SiglipAttention.
+Unsloth: Compiled function _trunc_normal_.
+Unsloth: Compiled function trunc_normal_tf_.
+Unsloth: Compiled function variance_scaling_.
+Unsloth: Compiled function lecun_normal_.
+Unsloth: Compiled function default_flax_embed_init.
+Unsloth: Compiled function eager_attention_forward.
+No module named 'causal_conv1d' No module named 'causal_conv1d'
+Unsloth: Failed compiling causal_conv1d
+Unsloth: Failed compiling mamba_ssm
+Unsloth: Patching LoRA to make it faster
+Unsloth: Not an error, but could not optimize some PEFT modules.
+Unsloth: Not an error, but could not optimize some PEFT modules.
+[]
+Unsloth: Upcasting layernorm weights to float32
+Unsloth: Disabling compile for GptOssExperts since it's marked for disabling.
+Unsloth: Disabling compile for GptOssMLP since it's marked for disabling.
+Unsloth: Will not compile GptOssAttention since it looks like it calls attention modules!
+Unsloth: Compiled module GptOssRMSNorm.
+Unsloth: Compiled module GptOssTopKRouter.
+Unsloth: Compiled module GptOssRotaryEmbedding.
+(2) Unsloth skipping patching fast linear cross entropy for GptOssForCausalLM
+[2/3 pattern] Successfully patched fast linear cross entropy for GptOssForCausalLM
+Unsloth: Fast fused linear cross entropy patch for GptOssForCausalLM.
+Unsloth: Fixed up function apply_rotary_pos_emb.
+Unsloth: Compiled function repeat_kv.
+Unsloth: Compiled function _apply_rotary_emb.
+Unsloth: Compiled function eager_attention_forward.
+Unsloth: Compiled function load_balancing_loss_func.
+🔧 CRITICAL: COMPREHENSIVE PATCH VERSION 2025-11-05-20:15 - Attempting to patch ALL bitsandbytes Linear4bit forward...
+🔧 CRITICAL: Successfully imported bitsandbytes modules
+🔧 CRITICAL: Successfully patched bitsandbytes.nn.modules.Linear4bit
+🔧 CRITICAL: Successfully patched bitsandbytes.nn.Linear4bit
+🔧 CRITICAL: Patched 2 Linear4bit locations
+✅ Applied minimal cache device fix (preserves normal initialization)
+✅ Applied cache_position generation fix (prevents overflow at source)
+✅ Applied sliding window cache bounds checking
+✅ Applied flex attention safety patch
+✅ Applied lightweight cache debugging (minimal overhead)
+[unsloth_zoo.log|INFO]Unsloth: Patched Linear4bit.forward.
+[unsloth_zoo.log|INFO]Unsloth: Patched Linear4bit.forward.
+[unsloth_zoo.log|INFO]Unsloth: Patched Gemma3Processor.__call__.
+[unsloth_zoo.log|INFO]Unsloth: Patched Gemma3RMSNorm.forward.
+[unsloth_zoo.log|INFO]Unsloth: Patched Gemma3Attention.forward.
+[unsloth_zoo.log|ERROR]Unsloth: Skipped CsmDepthDecoderForCausalLM.forward
+Reason: New function removed output_attentions and output_hidden_states
+[unsloth_zoo.log|INFO]Unsloth: Patched CsmDepthDecoderForCausalLM.forward.
+[unsloth_zoo.log|ERROR]Unsloth: Skipped CsmForConditionalGeneration.forward
+Reason: New function removed output_attentions and output_hidden_states
+[unsloth_zoo.log|INFO]Unsloth: Patched CsmForConditionalGeneration.forward.
+[unsloth_zoo.log|INFO]Unsloth: Patched CsmForConditionalGeneration._merge_input_ids_with_input_values.
+[unsloth_zoo.log|INFO]Unsloth: Patched Gemma3nTextAltUp.predict.
+[unsloth_zoo.log|INFO]Unsloth: Patched Gemma3nTextAltUp.correct.
+[unsloth_zoo.log|INFO]Unsloth: Patched Gemma3nTextAltUp.scale_corrected_output.
+[unsloth_zoo.log|ERROR]Unsloth: Skipped Gemma3nModel.get_placeholder_mask
+Reason: Parameter 'input_ids' changed from optional to required
+[unsloth_zoo.log|ERROR]==================
+Failed to patch Please install triton_kernels. Error
+No module named 'triton_kernels'
+==================
+
+[unsloth_zoo.log|INFO]Unsloth: Patched GptOssAttention.forward.
+[unsloth_zoo.log|INFO]Unsloth: Patched GptOssModel.forward.
+[unsloth_zoo.log|INFO]Unsloth: Patched GptOssForCausalLM.forward with inference_mode wrapper
+/usr/local/lib/python3.12/site-packages/unsloth_zoo/temporary_patches/gpt_oss.py:1342: FutureWarning: `torch.distributed.reduce_op` is deprecated, please use `torch.distributed.ReduceOp` instead
+  if isinstance(obj, torch.nn.Module):
+[unsloth_zoo.log|INFO]Unsloth: Wrapped existing requires_grad hooks to handle inference mode
+[unsloth_zoo.log|INFO]Unsloth: Patched PixtralAttention.__init__.
+[unsloth_zoo.log|INFO]Unsloth: Patched PixtralAttention.forward.
+[unsloth_zoo.log|INFO]Unsloth: Patched transformers.integrations.mxfp4.convert_moe_packed_tensors.
+[unsloth_zoo.log|INFO]Unsloth: Patched transformers.integrations.mxfp4.dequantize.
+[unsloth_zoo.log|INFO]Unsloth: Successfully added convert_moe_packed_tensors_cpu function.
+==((====))==  Unsloth 2025.10.7: Fast Gpt_Oss patching. Transformers: 4.56.2.
+   \\   /|    NVIDIA A100-SXM4-40GB. Num GPUs = 1. Max memory: 39.494 GB. Platform: Linux.
+O^O/ \_/ \    Torch: 2.6.0+cu124. CUDA: 8.0. CUDA Toolkit: 12.4. Triton: 3.2.0
+\        /    Bfloat16 = TRUE. FA [Xformers = 0.0.29.post3. FA2 = False]
+ "-____-"     Free license: http://github.com/unslothai/unsloth
+Unsloth: Fast downloading is enabled - ignore downloading bars which are red colored!
+
+
+⏱️  Training running for 0.5 minutes...
+📋 Cache logs detected: 7 files
+   ⚠️  unsloth_cache_lightweight_20251106_043455.log: 723 lines, HAS FAILURES!
+   ⚠️  unsloth_cache_lightweight_20251106_043727.log: 431 lines, HAS FAILURES!
+   ⚠️  unsloth_cache_lightweight_20251106_044342.log: 723 lines, HAS FAILURES!
+   ⚠️  unsloth_cache_lightweight_20251106_045435.log: 532 lines, HAS FAILURES!
+   📄 unsloth_cache_lightweight_20251106_050528.log: 3 lines
+   📄 unsloth_cache_lightweight_20251106_050754.log: 3 lines
+   📄 unsloth_cache_lightweight_20251106_051011.log: 3 lines
+[1AFetching 4 files:   0%|          | 0/4 [00:00<?, ?it/s]
+⏱️  Training running for 1.0 minutes...
+📋 Cache logs detected: 7 files
+   ⚠️  unsloth_cache_lightweight_20251106_043455.log: 723 lines, HAS FAILURES!
+   ⚠️  unsloth_cache_lightweight_20251106_043727.log: 431 lines, HAS FAILURES!
+   ⚠️  unsloth_cache_lightweight_20251106_044342.log: 723 lines, HAS FAILURES!
+   ⚠️  unsloth_cache_lightweight_20251106_045435.log: 532 lines, HAS FAILURES!
+   📄 unsloth_cache_lightweight_20251106_050528.log: 3 lines
+   📄 unsloth_cache_lightweight_20251106_050754.log: 3 lines
+   📄 unsloth_cache_lightweight_20251106_051011.log: 3 lines
+Fetching 4 files:  25%|██▌       | 1/4 [01:04<03:14, 64.79s/it]Fetching 4 files: 100%|██████████| 4/4 [01:04<00:00, 16.20s/it]
+
+
+⏱️  Training running for 1.5 minutes...
+📋 Cache logs detected: 7 files
+   ⚠️  unsloth_cache_lightweight_20251106_043455.log: 723 lines, HAS FAILURES!
+   ⚠️  unsloth_cache_lightweight_20251106_043727.log: 431 lines, HAS FAILURES!
+   ⚠️  unsloth_cache_lightweight_20251106_044342.log: 723 lines, HAS FAILURES!
+   ⚠️  unsloth_cache_lightweight_20251106_045435.log: 532 lines, HAS FAILURES!
+   📄 unsloth_cache_lightweight_20251106_050528.log: 3 lines
+   📄 unsloth_cache_lightweight_20251106_050754.log: 3 lines
+   📄 unsloth_cache_lightweight_20251106_051011.log: 3 lines
+[1ALoading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]
+[1ALoading checkpoint shards:  25%|██▌       | 1/4 [00:01<00:04,  1.48s/it]
+[1ALoading checkpoint shards:  50%|█████     | 2/4 [00:03<00:03,  1.60s/it]
+[1ALoading checkpoint shards:  75%|███████▌  | 3/4 [00:04<00:01,  1.46s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:04<00:00,  1.04it/s]Loading checkpoint shards: 100%|██████████| 4/4 [00:04<00:00,  1.17s/it]
+✅ Model loaded - Sliding window: 128
+Prompt length: ~1406 tokens
+Dataset - prompt tokens: 1417, max_completion: 1883
+Creating GRPO trainer...
+[accelerate.utils.other|WARNING]Detected kernel version 4.4.0, which is below the recommended minimum of 5.5.0; this can cause the process to hang. It is recommended to upgrade the kernel to the minimum version or higher.
+
+================================================================================
+STARTING TRAINING - MONITORING FOR CACHE OVERFLOW
+Expected: positions jump from ~63 to 1262-1263
+================================================================================
+
+============================================================
+🧪 PHASE 1: TESTING SINGLE FORWARD/BACKWARD PASS
+============================================================
+📊 Test input shape: torch.Size([1, 512])
+🚀 Running forward pass...
+Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s]Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, __name__]Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, __doc__] Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, __package__]Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, __loader__] Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, __spec__]  Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, __file__]Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, key]     Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, __builtins__]Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, c_void_p]    Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, c_long]  Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, c_int] Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, torch]Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, math] Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, random]Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, os]    Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, tempfile]Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, inf]     Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, nan]Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, run_intermediate_hooks]Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, maybe_profile]         Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, align]        Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, device]Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, empty_strided]Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, AsyncCompile] Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, extern_kernels]Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, MultiKernelCall]Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, triton]         Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, tl]    Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, grid]Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, split_scan_grid]Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, grid_combo_kernels]Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, start_graph]       Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, end_graph]  Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, cooperative_reduction_grid]Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, get_raw_stream]            Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, aten]          Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, inductor_ops]Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, _quantized]  Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, assert_size_stride]Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, empty_strided_cpu] Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, empty_strided_cuda]Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, empty_strided_xpu] Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, reinterpret_tensor]Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, alloc_from_pool]   Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, async_compile]  Unsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, empty_strided_p2p]
+[1AUnsloth: Compiling kernels:   0%|          | 0/2 [00:00<?, ?it/s, triton_poi_fused__to_copy_0]Unsloth: Compiling kernels:  50%|█████     | 1/2 [00:01<00:01,  1.19s/it, triton_poi_fused__to_copy_0]
+[1AUnsloth: Compiling kernels:  50%|█████     | 1/2 [00:01<00:01,  1.19s/it, triton_poi_fused__to_copy_cos_mul_sin_1]Unsloth: Compiling kernels: 100%|██████████| 2/2 [00:01<00:00,  1.19it/s, triton_poi_fused__to_copy_cos_mul_sin_1]Unsloth: Compiling kernels: 100%|██████████| 2/2 [00:01<00:00,  1.12it/s, triton_poi_fused__to_copy_cos_mul_sin_1]
+Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, __name__]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, __doc__] Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, __package__]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, __loader__] Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, __spec__]  Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, __file__]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, key]     Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, __builtins__]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, c_void_p]    Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, c_long]  Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, c_int] Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, torch]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, math] Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, random]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, os]    Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, tempfile]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, inf]     Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, nan]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, run_intermediate_hooks]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, maybe_profile]         Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, align]        Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, device]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, empty_strided]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, AsyncCompile] Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, extern_kernels]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, MultiKernelCall]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, triton]         Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, tl]    Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, grid]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, split_scan_grid]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, grid_combo_kernels]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, start_graph]       Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, end_graph]  Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, cooperative_reduction_grid]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, get_raw_stream]            Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, aten]          Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, inductor_ops]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, _quantized]  Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, assert_size_stride]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, empty_strided_cpu] Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, empty_strided_cuda]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, empty_strided_xpu] Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, reinterpret_tensor]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, alloc_from_pool]   Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, async_compile]  Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, empty_strided_p2p]
+[1AUnsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, triton_red_fused__to_copy_add_mean_mul_pow_rsqrt_0]Unsloth: Compiling kernels: 100%|██████████| 1/1 [00:00<00:00,  1.24it/s, triton_red_fused__to_copy_add_mean_mul_pow_rsqrt_0]Unsloth: Compiling kernels: 100%|██████████| 1/1 [00:00<00:00,  1.24it/s, triton_red_fused__to_copy_add_mean_mul_pow_rsqrt_0]
+Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, __name__]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, __doc__] Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, __package__]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, __loader__] Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, __spec__]  Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, __file__]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, key]     Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, __builtins__]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, c_void_p]    Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, c_long]  Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, c_int] Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, torch]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, math] Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, random]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, os]    Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, tempfile]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, inf]     Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, nan]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, run_intermediate_hooks]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, maybe_profile]         Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, align]        Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, device]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, empty_strided]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, AsyncCompile] Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, extern_kernels]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, MultiKernelCall]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, triton]         Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, tl]    Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, grid]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, split_scan_grid]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, grid_combo_kernels]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, start_graph]       Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, end_graph]  Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, cooperative_reduction_grid]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, get_raw_stream]            Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, aten]          Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, inductor_ops]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, _quantized]  Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, assert_size_stride]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, empty_strided_cpu] Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, empty_strided_cuda]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, empty_strided_xpu] Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, reinterpret_tensor]Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, alloc_from_pool]   Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, async_compile]  Unsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, empty_strided_p2p]
+[1AUnsloth: Compiling kernels:   0%|          | 0/1 [00:00<?, ?it/s, triton_red_fused__to_copy_add_div_mul_pow_sum_0]Unsloth: Compiling kernels: 100%|██████████| 1/1 [00:00<00:00,  1.22it/s, triton_red_fused__to_copy_add_div_mul_pow_sum_0]Unsloth: Compiling kernels: 100%|██████████| 1/1 [00:00<00:00,  1.22it/s, triton_red_fused__to_copy_add_div_mul_pow_sum_0]
+🔧 USING COMPREHENSIVE BITSANDBYTES FORWARD VERSION 2025-11-05-20:15 DYNAMO-SAFE (module id: 47243766384880)
+
+🎯 Final Result: {'success': False, 'cache_issue_reproduced': False, 'error_message': 'self and mat2 must have the same dtype, but got BFloat16 and Float'}
+
+❌ ERROR: self and mat2 must have the same dtype, but got BFloat16 and Float
+❌ Unexpected error (not cache-related): self and mat2 must have the same dtype, but got BFloat16 and Float
+
+📋 Final cache logs analysis:
+  unsloth_cache_lightweight_20251106_043455.log:
+    Lines: 723
+    Has failures: True
+    Has illegal access: False
+    Preview: Unsloth Lightweight Cache Debug - Started at 2025-11-06 04:34:55.830212
+================================================================================
+
+
+=============================================...
+  unsloth_cache_lightweight_20251106_043727.log:
+    Lines: 431
+    Has failures: True
+    Has illegal access: False
+    Preview: Unsloth Lightweight Cache Debug - Started at 2025-11-06 04:37:27.155331
+================================================================================
+
+
+=============================================...
+  unsloth_cache_lightweight_20251106_044342.log:
+    Lines: 723
+    Has failures: True
+    Has illegal access: False
+    Preview: Unsloth Lightweight Cache Debug - Started at 2025-11-06 04:43:42.062208
+================================================================================
+
+
+=============================================...
+  unsloth_cache_lightweight_20251106_045435.log:
+    Lines: 532
+    Has failures: True
+    Has illegal access: False
+    Preview: Unsloth Lightweight Cache Debug - Started at 2025-11-06 04:54:35.479465
+================================================================================
+
+
+=============================================...
+  unsloth_cache_lightweight_20251106_050528.log:
+    Lines: 3
+    Has failures: False
+    Has illegal access: False
+    Preview: Unsloth Lightweight Cache Debug - Started at 2025-11-06 05:05:28.617076
+================================================================================
+
+...
+  unsloth_cache_lightweight_20251106_050754.log:
+    Lines: 3
+    Has failures: False
+    Has illegal access: False
+    Preview: Unsloth Lightweight Cache Debug - Started at 2025-11-06 05:07:54.186178
+================================================================================
+
+...
+  unsloth_cache_lightweight_20251106_051011.log:
+    Lines: 3
+    Has failures: False
+    Has illegal access: False
+    Preview: Unsloth Lightweight Cache Debug - Started at 2025-11-06 05:10:11.103786
+================================================================================
+
+...
+
+❌ Unexpected error: self and mat2 must have the same dtype, but got BFloat16 and Float
+Stopping app - local entrypoint completed.
+✓ App completed. View run at 
+https://modal.com/apps/amrothemich/main/ap-o6acNJEGNZmNWlHD3hmdX4
