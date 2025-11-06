@@ -46,8 +46,9 @@ def patch_minimal_sliding_window_cache_device_fix():
                 else:
                     pos_value = cache_position
                     
-                # If position is beyond safe range, clamp it
-                if pos_value >= cache_window_size:
+                # DISABLED: Let cache_position_fix.py handle position wrapping
+                # Clamping to window_size-1 was incorrect - should wrap with modulo
+                if False and pos_value >= cache_window_size:
                     print(f"🔧 Cache position overflow detected: {pos_value} >= {cache_window_size}, clamping to {cache_window_size - 1}")
                     # Create a safe cache_position
                     safe_position = torch.tensor([cache_window_size - 1], device=key_states.device)

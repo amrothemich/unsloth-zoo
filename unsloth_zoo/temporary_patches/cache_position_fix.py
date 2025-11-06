@@ -100,9 +100,9 @@ def patch_cache_position_generation():
                             if any(abs(d) > 100 for d in diffs):
                                 print(f"   ⚠️  Large position jump detected!")
                     
-                    # TEMPORARILY DISABLE POSITION FIXES to see the real issue
-                    # The position wrapping might be masking the root cause
-                    if False and pos_value > sliding_window_size + 100:  # DISABLED
+                    # For sliding windows, positions should wrap around
+                    # Position 128 should become 0, 129->1, etc.
+                    if sliding_window_size is not None and pos_value >= sliding_window_size:
                         print(f"🔧 PREVENTING cache_position overflow: {pos_value} -> {pos_value % sliding_window_size}")
                         print(f"   Recent position history: {patch_cache_position_generation.position_history[-10:]}")
                         # Wrap around instead of clamping to preserve position relationships
@@ -190,8 +190,8 @@ def patch_sliding_window_cache_creation():
                     cache_kwargs['cache_position'] = torch.tensor([0], device=key_states.device)
                     pos_value = 0
                 
-                # TEMPORARILY DISABLE POSITION WRAPPING to see the real issue
-                if False and pos_value > self._actual_window_size + 100:  # DISABLED
+                # For sliding windows, wrap positions to stay within window bounds
+                if pos_value >= self._actual_window_size:
                     wrapped_position = pos_value % self._actual_window_size
                     print(f"🔧 Wrapping cache_position: {pos_value} -> {wrapped_position} (window size: {self._actual_window_size})")
                     cache_kwargs = dict(cache_kwargs)
