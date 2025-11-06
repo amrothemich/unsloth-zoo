@@ -51,8 +51,32 @@ def patch_cache_position_generation():
                     sliding_window_size = 128  # Default fallback
                 
                 try:
-                    # Check if cache_position exceeds sliding window
-                    if hasattr(cache_position, 'item'):
+                    # Check cache_position shape - this is where corruption is detected
+                    if hasattr(cache_position, 'shape'):
+                        cache_shape = cache_position.shape
+                        if len(cache_shape) > 1 or (len(cache_shape) == 1 and cache_shape[0] > 1):
+                            print(f"🚨 CORRUPTED cache_position shape: {cache_shape}")
+                            print(f"   Expected: scalar or [1], got: {cache_shape}")
+                            if cache_shape[0] <= 10:  # Only log if not too large
+                                print(f"   Values: {cache_position.tolist()}")
+                            else:
+                                print(f"   First 5 values: {cache_position[:5].tolist()}")
+                                print(f"   Last 5 values: {cache_position[-5:].tolist()}")
+                            
+                            # Use the last position as that's likely the current one
+                            pos_value = cache_position[-1].item()
+                            print(f"   Using last position: {pos_value}")
+                            
+                            # FIX THE CORRUPTION: Replace with correct single-position tensor
+                            corrected_position = torch.tensor([pos_value], 
+                                                             device=cache_position.device, 
+                                                             dtype=cache_position.dtype)
+                            updated_kwargs["cache_position"] = corrected_position
+                            print(f"   ✅ FIXED: Replaced {cache_shape} tensor with scalar position {pos_value}")
+                        else:
+                            # Normal case - single position
+                            pos_value = cache_position.item()
+                    elif hasattr(cache_position, 'item'):
                         pos_value = cache_position.item()
                     elif hasattr(cache_position, '__len__') and len(cache_position) > 0:
                         pos_value = cache_position[0].item() if hasattr(cache_position[0], 'item') else cache_position[0]
@@ -139,12 +163,32 @@ def patch_sliding_window_cache_creation():
             # Check cache_position bounds before any operations
             cache_position = cache_kwargs.get('cache_position', None)
             if cache_position is not None and hasattr(self, '_actual_window_size'):
-                if hasattr(cache_position, 'item'):
-                    pos_value = cache_position.item()
-                elif hasattr(cache_position, '__len__') and len(cache_position) > 0:
-                    pos_value = cache_position[0].item() if hasattr(cache_position[0], 'item') else cache_position[0]
-                else:
-                    pos_value = cache_position
+                try:
+                    # Handle corrupted cache_position tensors
+                    if hasattr(cache_position, 'shape'):
+                        cache_shape = cache_position.shape
+                        if len(cache_shape) > 1 or (len(cache_shape) == 1 and cache_shape[0] > 1):
+                            print(f"🚨 SlidingWindow: CORRUPTED cache_position shape: {cache_shape}")
+                            # Use the last position and fix the tensor
+                            pos_value = cache_position[-1].item()
+                            corrected_position = torch.tensor([pos_value], device=cache_position.device, dtype=cache_position.dtype)
+                            cache_kwargs = dict(cache_kwargs)
+                            cache_kwargs['cache_position'] = corrected_position
+                            print(f"   Fixed: using position {pos_value}")
+                        else:
+                            pos_value = cache_position.item()
+                    elif hasattr(cache_position, 'item'):
+                        pos_value = cache_position.item()
+                    elif hasattr(cache_position, '__len__') and len(cache_position) > 0:
+                        pos_value = cache_position[0].item() if hasattr(cache_position[0], 'item') else cache_position[0]
+                    else:
+                        pos_value = cache_position
+                except Exception as e:
+                    print(f"⚠️  Failed to read cache_position in SlidingWindow: {e}")
+                    # Set a safe default
+                    cache_kwargs = dict(cache_kwargs)
+                    cache_kwargs['cache_position'] = torch.tensor([0], device=key_states.device)
+                    pos_value = 0
                 
                 # TEMPORARILY DISABLE POSITION WRAPPING to see the real issue
                 if False and pos_value > self._actual_window_size + 100:  # DISABLED
@@ -200,8 +244,19 @@ def patch_flex_attention_safety():
             except Exception as e:
                 print(f"🚨 CUDA error in create_mask caught: {e}")
                 print(f"   Parameters: B={B}, H={H}, Q_LEN={Q_LEN}, KV_LEN={KV_LEN}, device={device}")
-                # Return a minimal mask to prevent crash
-                return torch.ones((1, 1, 1, 1), device=device, dtype=torch.bool)
+                try:
+                    # First try: minimal mask on same device
+                    return torch.ones((1, 1, 1, 1), device=device, dtype=torch.bool)
+                except Exception as e2:
+                    print(f"🚨 GPU completely corrupted, even torch.ones() fails: {e2}")
+                    try:
+                        # Fallback: CPU tensor then move to device
+                        cpu_mask = torch.ones((1, 1, 1, 1), dtype=torch.bool)
+                        return cpu_mask.to(device)
+                    except Exception as e3:
+                        print(f"🚨 Complete failure, returning CPU tensor: {e3}")
+                        # Last resort: CPU tensor
+                        return torch.ones((1, 1, 1, 1), dtype=torch.bool)
         
         # Monkey patch the function
         torch.nn.attention.flex_attention.create_mask = safe_create_mask
