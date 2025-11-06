@@ -43,32 +43,18 @@ def patch_comprehensive_cache_debugging():
             patch_comprehensive_cache_debugging.failure_count = 0
             patch_comprehensive_cache_debugging.last_successful_state = {}
             patch_comprehensive_cache_debugging.device_history = []
-            
-            # Set up logging
-            log_dir = os.environ.get('UNSLOTH_CACHE_DEBUG_LOG_DIR', '.')
-            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-            log_filename = f"unsloth_cache_debug_{timestamp}.log"
-            patch_comprehensive_cache_debugging.log_path = os.path.join(log_dir, log_filename)
-            
-            # Create log directory if needed
-            os.makedirs(log_dir, exist_ok=True)
-            
-            # Initial log message
-            with open(patch_comprehensive_cache_debugging.log_path, 'w') as f:
-                f.write(f"Unsloth Cache Debug Log - Started at {datetime.datetime.now()}\n")
-                f.write(f"Log path: {patch_comprehensive_cache_debugging.log_path}\n")
-                f.write(f"Set UNSLOTH_CACHE_DEBUG_LOG_DIR env var to change log location\n")
-                f.write("="*80 + "\n\n")
-            
-            print(f"📝 Unsloth cache debug logging to: {patch_comprehensive_cache_debugging.log_path}")
+
+            # Don't try to set up file logging - file writes don't work in Databricks
+            patch_comprehensive_cache_debugging.log_path = None
+
+            print(f"📝 Cache debugging active - using print() instead of file logging")
         
         original_update = SlidingWindowLayer.update
         
         def log_debug(message):
-            """Helper to write to log file"""
-            with open(patch_comprehensive_cache_debugging.log_path, 'a') as f:
-                f.write(message + '\n')
-                f.flush()  # Ensure immediate write
+            """Helper to write debug message - just use print in Databricks"""
+            # Don't write to file - doesn't work in Databricks
+            pass
         
         def comprehensive_debug_update(self, key_states, value_states, cache_kwargs):
             call_count = patch_comprehensive_cache_debugging.call_count
@@ -301,22 +287,17 @@ def patch_comprehensive_cache_debugging():
             
             # Only print summary to console
             if update_exception or not test_success:
-                print(f"❌ Cache debug #{call_count}: {'FAILED' if update_exception else 'WARNING'} - see {patch_comprehensive_cache_debugging.log_path}")
+                print(f"❌ Cache debug #{call_count}: {'FAILED' if update_exception else 'WARNING'}")
             elif call_count % 1000 == 0:  # Print progress every 1000 calls
-                print(f"✅ Cache debug #{call_count}: OK - logging to {patch_comprehensive_cache_debugging.log_path}")
-                # Also log a summary every 1000 calls
-                log_debug(f"=== SUMMARY at call #{call_count} ===")
-                log_debug(f"Memory: {torch.cuda.memory_allocated() / 1e9:.2f} GB allocated")
-                log_debug(f"Cache state: {'None' if not hasattr(self, 'keys') or self.keys is None else 'Initialized'}")
-                log_debug("")
+                print(f"✅ Cache debug #{call_count}: OK")
+                print(f"   Memory: {torch.cuda.memory_allocated() / 1e9:.2f} GB allocated")
+                print(f"   Cache state: {'None' if not hasattr(self, 'keys') or self.keys is None else 'Initialized'}")
             
             return result
         
         # Apply the patch
         SlidingWindowLayer.update = comprehensive_debug_update
-        print(f"✅ Applied comprehensive cache debugging patch with file logging")
-        print(f"📝 Logs will be written to: {patch_comprehensive_cache_debugging.log_path}")
-        print(f"💡 Set UNSLOTH_CACHE_DEBUG_LOG_DIR env var to change log directory")
+        print(f"✅ Applied comprehensive cache debugging patch (print-based logging)")
         
     except Exception as e:
         print(f"❌ Failed to apply comprehensive cache debugging patch: {e}")
