@@ -68,7 +68,43 @@ def patch_comprehensive_cache_debugging():
         def comprehensive_debug_update(self, key_states, value_states, cache_kwargs):
             call_count = patch_comprehensive_cache_debugging.call_count
             patch_comprehensive_cache_debugging.call_count += 1
-            
+
+            # ========================================================================
+            # CRITICAL FIX: Check and fix cache_position in cache_kwargs RIGHT NOW!
+            # ========================================================================
+            if "cache_position" in cache_kwargs and cache_kwargs["cache_position"] is not None:
+                cache_pos = cache_kwargs["cache_position"]
+                if hasattr(cache_pos, 'shape') and len(cache_pos.shape) > 0 and cache_pos.shape[0] > 1:
+                    # CORRUPTED! Fix it immediately
+                    debug_msg = f"""
+🚨 CACHE CORRUPTION DETECTED IN SlidingWindowLayer.update!
+Call #{call_count}
+Shape: {cache_pos.shape}
+Values (first 20): {cache_pos[:20].tolist() if cache_pos.shape[0] >= 20 else cache_pos.tolist()}
+"""
+                    try:
+                        with open('/dbfs/FileStore/payer_ai/NLP/CALLM/cache_debug.txt', 'a') as f:
+                            f.write(debug_msg)
+                            f.write('\n' + '='*80 + '\n')
+                    except:
+                        pass
+
+                    # FIX IT
+                    last_pos = cache_pos[-1].item()
+                    sliding_window = getattr(self, 'sliding_window', None)
+                    if sliding_window is not None and last_pos >= sliding_window:
+                        last_pos = last_pos % sliding_window
+
+                    cache_kwargs["cache_position"] = torch.tensor([last_pos],
+                                                                   device=cache_pos.device,
+                                                                   dtype=cache_pos.dtype)
+
+                    try:
+                        with open('/dbfs/FileStore/payer_ai/NLP/CALLM/cache_debug.txt', 'a') as f:
+                            f.write(f"✅ FIXED in SlidingWindowLayer.update: Reduced to position {last_pos}\n\n")
+                    except:
+                        pass
+
             # Buffer for all debug output
             debug_buffer = io.StringIO()
             
