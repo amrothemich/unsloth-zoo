@@ -343,6 +343,9 @@ def patch_grpo_cache_reset():
     Ensure cache is properly reset between GRPO generations.
     GRPO generates multiple completions per prompt, and we need to ensure
     cache_position doesn't accumulate across these generations.
+
+    This patches prepare_inputs_for_generation which is called RIGHT BEFORE
+    the forward pass, giving us the last chance to fix cache_position.
     """
     try:
         from transformers import GenerationMixin
@@ -354,28 +357,39 @@ def patch_grpo_cache_reset():
             # Get the prepared inputs from the original method
             model_inputs = original_prepare_inputs(self, input_ids, **kwargs)
 
+            # Get sliding window size
+            sliding_window = getattr(self.config, 'sliding_window', None)
+
             # Ensure cache_position is always a single-element tensor, never accumulated
             if "cache_position" in model_inputs and model_inputs["cache_position"] is not None:
                 cache_pos = model_inputs["cache_position"]
 
                 # Check if it's accumulated (multiple elements)
                 if hasattr(cache_pos, 'shape') and len(cache_pos.shape) > 0 and cache_pos.shape[0] > 1:
+                    print(f"🔧 FIXING cache_position in prepare_inputs_for_generation: shape {cache_pos.shape}")
+
                     # Take only the last position and create a fresh tensor
                     last_pos = cache_pos[-1].item() if hasattr(cache_pos[-1], 'item') else cache_pos[-1]
 
-                    # Get sliding window size for wrapping
-                    sliding_window = getattr(self.config, 'sliding_window', 128)
+                    # For sliding window, wrap position
                     if sliding_window is not None and last_pos >= sliding_window:
-                        last_pos = last_pos % sliding_window
+                        wrapped_pos = last_pos % sliding_window
+                        print(f"   Wrapping position {last_pos} -> {wrapped_pos} (window: {sliding_window})")
+                        last_pos = wrapped_pos
 
                     model_inputs["cache_position"] = torch.tensor([last_pos],
                                                                    device=cache_pos.device,
                                                                    dtype=cache_pos.dtype)
+                    print(f"   ✅ Fixed to single-element tensor: {model_inputs['cache_position']}")
+                elif hasattr(cache_pos, 'shape') and len(cache_pos.shape) > 0:
+                    # Log for debugging even when shape is correct
+                    if cache_pos.shape[0] % 100 == 0:  # Log periodically
+                        print(f"   cache_position shape OK: {cache_pos.shape}, value: {cache_pos.item() if cache_pos.shape[0] == 1 else cache_pos[:5].tolist()}")
 
             return model_inputs
 
         GenerationMixin.prepare_inputs_for_generation = safe_prepare_inputs_for_generation
-        print("✅ Applied GRPO cache reset patch")
+        print("✅ Applied GRPO cache reset patch (aggressive cache_position fix)")
 
     except ImportError:
         pass
