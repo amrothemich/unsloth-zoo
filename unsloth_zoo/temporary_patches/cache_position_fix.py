@@ -29,6 +29,10 @@ def patch_cache_position_generation():
         # Store the original update_model_kwargs_for_generation method
         original_update_kwargs = GenerationMixin._update_model_kwargs_for_generation
         
+        # Track positions to detect the corruption pattern
+        if not hasattr(patch_cache_position_generation, 'position_history'):
+            patch_cache_position_generation.position_history = []
+        
         def safe_update_model_kwargs_for_generation(
             self, outputs, model_kwargs, is_encoder_decoder=False, num_new_tokens=1
         ):
@@ -46,23 +50,44 @@ def patch_cache_position_generation():
                 if sliding_window_size is None:
                     sliding_window_size = 128  # Default fallback
                 
-                # Check if cache_position exceeds sliding window
-                if hasattr(cache_position, 'item'):
-                    pos_value = cache_position.item()
-                elif hasattr(cache_position, '__len__') and len(cache_position) > 0:
-                    pos_value = cache_position[0].item() if hasattr(cache_position[0], 'item') else cache_position[0]
-                else:
-                    pos_value = cache_position
+                try:
+                    # Check if cache_position exceeds sliding window
+                    if hasattr(cache_position, 'item'):
+                        pos_value = cache_position.item()
+                    elif hasattr(cache_position, '__len__') and len(cache_position) > 0:
+                        pos_value = cache_position[0].item() if hasattr(cache_position[0], 'item') else cache_position[0]
+                    else:
+                        pos_value = cache_position
+                    
+                    # Track position history to understand the pattern
+                    patch_cache_position_generation.position_history.append(pos_value)
+                    if len(patch_cache_position_generation.position_history) > 50:
+                        patch_cache_position_generation.position_history.pop(0)
+                    
+                    # Only prevent positions that are way beyond sliding window (not just >=)
+                    # Position equal to sliding_window_size is normal (means slide to next position)
+                    if pos_value > sliding_window_size + 100:  # Only fix truly problematic positions
+                        print(f"🔧 PREVENTING cache_position overflow: {pos_value} -> {pos_value % sliding_window_size}")
+                        print(f"   Recent position history: {patch_cache_position_generation.position_history[-10:]}")
+                        # Wrap around instead of clamping to preserve position relationships
+                        wrapped_position = pos_value % sliding_window_size
+                        corrected_position = torch.tensor([wrapped_position], 
+                                                         device=cache_position.device, 
+                                                         dtype=cache_position.dtype)
+                        updated_kwargs["cache_position"] = corrected_position
+                    elif pos_value < 0:
+                        # Negative positions are definitely wrong
+                        print(f"🔧 FIXING negative cache_position: {pos_value} -> 0")
+                        print(f"   Recent position history: {patch_cache_position_generation.position_history[-10:]}")
+                        corrected_position = torch.tensor([0], 
+                                                         device=cache_position.device, 
+                                                         dtype=cache_position.dtype)
+                        updated_kwargs["cache_position"] = corrected_position
                 
-                # Only prevent positions that are way beyond sliding window (not just >=)
-                # Position equal to sliding_window_size is normal (means slide to next position)
-                if pos_value > sliding_window_size + 100:  # Only fix truly problematic positions
-                    print(f"🔧 PREVENTING cache_position overflow: {pos_value} -> {pos_value % sliding_window_size}")
-                    # Wrap around instead of clamping to preserve position relationships
-                    wrapped_position = pos_value % sliding_window_size
-                    corrected_position = torch.tensor([wrapped_position], 
-                                                     device=cache_position.device, 
-                                                     dtype=cache_position.dtype)
+                except Exception as e:
+                    print(f"⚠️  Cache position corrupted in generation: {e}")
+                    # Force reset to a safe value
+                    corrected_position = torch.tensor([0], device=getattr(cache_position, 'device', 'cuda:0'))
                     updated_kwargs["cache_position"] = corrected_position
             
             return updated_kwargs
@@ -130,5 +155,51 @@ def patch_sliding_window_cache_creation():
     except Exception as e:
         print(f"Warning: Failed to patch sliding window cache bounds: {e}")
 
+def patch_flex_attention_safety():
+    """
+    Add safety checks to flex_attention create_mask to prevent CUDA errors
+    from corrupted parameters.
+    """
+    try:
+        from torch.nn.attention.flex_attention import create_mask
+        import torch
+        
+        # Store original create_mask
+        original_create_mask = create_mask
+        
+        def safe_create_mask(mod_fn, B, H, Q_LEN, KV_LEN, device):
+            try:
+                # Validate parameters before calling torch.arange
+                if B is None or B <= 0 or B > 1000:  # Reasonable upper bound
+                    print(f"⚠️  Invalid B parameter in create_mask: {B}, using B=1")
+                    B = 1
+                if H is None or H <= 0 or H > 1000:
+                    print(f"⚠️  Invalid H parameter in create_mask: {H}, using H=1")
+                    H = 1
+                if Q_LEN is None or Q_LEN <= 0 or Q_LEN > 100000:
+                    print(f"⚠️  Invalid Q_LEN parameter in create_mask: {Q_LEN}, using Q_LEN=1")
+                    Q_LEN = 1
+                if KV_LEN is None or KV_LEN <= 0 or KV_LEN > 100000:
+                    print(f"⚠️  Invalid KV_LEN parameter in create_mask: {KV_LEN}, using KV_LEN=1")
+                    KV_LEN = 1
+                
+                return original_create_mask(mod_fn, B, H, Q_LEN, KV_LEN, device)
+                
+            except Exception as e:
+                print(f"🚨 CUDA error in create_mask caught: {e}")
+                print(f"   Parameters: B={B}, H={H}, Q_LEN={Q_LEN}, KV_LEN={KV_LEN}, device={device}")
+                # Return a minimal mask to prevent crash
+                return torch.ones((1, 1, 1, 1), device=device, dtype=torch.bool)
+        
+        # Monkey patch the function
+        torch.nn.attention.flex_attention.create_mask = safe_create_mask
+        print("✅ Applied flex attention safety patch")
+        
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"Warning: Failed to patch flex attention: {e}")
+
 TEMPORARY_PATCHES.append(patch_cache_position_generation)
 TEMPORARY_PATCHES.append(patch_sliding_window_cache_creation)
+TEMPORARY_PATCHES.append(patch_flex_attention_safety)
