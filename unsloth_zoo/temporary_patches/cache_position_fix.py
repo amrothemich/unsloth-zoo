@@ -242,21 +242,15 @@ def patch_flex_attention_safety():
                 return original_create_mask(mod_fn, B, H, Q_LEN, KV_LEN, device)
                 
             except Exception as e:
-                print(f"🚨 CUDA error in create_mask caught: {e}")
+                print(f"🚨 CUDA error in create_mask - GPU memory corrupted: {e}")
                 print(f"   Parameters: B={B}, H={H}, Q_LEN={Q_LEN}, KV_LEN={KV_LEN}, device={device}")
-                try:
-                    # First try: minimal mask on same device
-                    return torch.ones((1, 1, 1, 1), device=device, dtype=torch.bool)
-                except Exception as e2:
-                    print(f"🚨 GPU completely corrupted, even torch.ones() fails: {e2}")
-                    try:
-                        # Fallback: CPU tensor then move to device
-                        cpu_mask = torch.ones((1, 1, 1, 1), dtype=torch.bool)
-                        return cpu_mask.to(device)
-                    except Exception as e3:
-                        print(f"🚨 Complete failure, returning CPU tensor: {e3}")
-                        # Last resort: CPU tensor
-                        return torch.ones((1, 1, 1, 1), dtype=torch.bool)
+                print(f"🛑 STOPPING EXECUTION - GPU corruption detected!")
+                print(f"   The cache_position corruption has spread to GPU memory.")
+                print(f"   Continuing would produce garbage results.")
+                # Re-raise the error instead of masking it with CPU fallbacks
+                raise RuntimeError(f"GPU memory corruption detected in flex_attention. "
+                                 f"Root cause: corrupted cache_position tensors. "
+                                 f"Original error: {e}") from e
         
         # Monkey patch the function
         torch.nn.attention.flex_attention.create_mask = safe_create_mask
