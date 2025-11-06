@@ -36,11 +36,23 @@ def patch_cache_position_generation():
         def safe_update_model_kwargs_for_generation(
             self, outputs, model_kwargs, is_encoder_decoder=False, num_new_tokens=1
         ):
+            # Log that we're being called
+            call_num = len(patch_cache_position_generation.position_history)
+            if call_num % 10 == 0 or call_num < 5:
+                print(f"🔍 [Call #{call_num}] safe_update_model_kwargs_for_generation called")
+                # Check incoming cache_position
+                if "cache_position" in model_kwargs:
+                    incoming_cache_pos = model_kwargs["cache_position"]
+                    if hasattr(incoming_cache_pos, 'shape'):
+                        print(f"   INCOMING cache_position shape: {incoming_cache_pos.shape}")
+                        if incoming_cache_pos.shape[0] > 10:
+                            print(f"   ⚠️  INCOMING cache_position already corrupted with {incoming_cache_pos.shape[0]} elements!")
+
             # Call the original method
             updated_kwargs = original_update_kwargs(
                 self, outputs, model_kwargs, is_encoder_decoder, num_new_tokens
             )
-            
+
             # Check and fix cache_position if it exists
             if "cache_position" in updated_kwargs:
                 cache_position = updated_kwargs["cache_position"]
@@ -185,10 +197,19 @@ def patch_sliding_window_cache_creation():
         # Store original update
         original_update = SlidingWindowLayer.update
         
+        # Track call count for bounded_update
+        if not hasattr(bounded_update, 'call_count'):
+            bounded_update.call_count = 0
+
         def bounded_update(self, key_states, value_states, cache_kwargs):
             # AGGRESSIVE FIX: Always ensure cache_position is a single-element tensor
+            bounded_update.call_count += 1
             cache_position = cache_kwargs.get('cache_position', None)
             window_size = getattr(self, '_actual_window_size', 128)
+
+            # Log periodically
+            if bounded_update.call_count % 100 == 0 or bounded_update.call_count < 10:
+                print(f"🔍 [Call #{bounded_update.call_count}] bounded_update called, window_size={window_size}")
 
             if cache_position is not None:
                 try:

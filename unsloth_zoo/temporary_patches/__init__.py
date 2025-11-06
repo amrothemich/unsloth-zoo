@@ -21,8 +21,8 @@ from .bitsandbytes import *  # Import bitsandbytes patches first
 from .minimal_cache_fix import *  # Minimal device fix only
 from .cache_position_fix import *  # Prevent invalid cache positions at source
 # from .dtype_fix import *  # DISABLED: Fix dtype consistency issues in mixed precision (may interfere with unsloth's auto-detection)
-from .lightweight_cache_debug import *  # Import lightweight debugging (minimal overhead)
-# from .comprehensive_cache_debug import *  # Disabled - use only for deep debugging
+# from .lightweight_cache_debug import *  # Import lightweight debugging (minimal overhead)
+from .comprehensive_cache_debug import *  # ENABLED for deep debugging of cache_position issue
 from .gemma import *
 from .misc import *
 from .gemma3n import *
