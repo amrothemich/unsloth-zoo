@@ -1,0 +1,9 @@
+{
+  "run_name": "Test unsloth-zoo imports",
+  "existing_cluster_id": "0114-224552-m5zmpy1x",
+  "notebook_task": {
+    "notebook_path": "/Repos/aaron.casey@availity.com/callm/src/test_imports",
+    "base_parameters": {}
+  },
+  "timeout_seconds": 600
+}

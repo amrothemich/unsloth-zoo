@@ -23,6 +23,16 @@ import datetime
 import io
 import sys
 
+# IMMEDIATE MARKER: Write to file as soon as this module is imported
+try:
+    os.makedirs('/dbfs/FileStore/payer_ai/NLP/CALLM', exist_ok=True)
+    with open('/dbfs/FileStore/payer_ai/NLP/CALLM/cache_debug.txt', 'a') as f:
+        f.write(f"\n{'='*80}\n")
+        f.write(f"🔧 comprehensive_cache_debug.py MODULE IMPORTED at {datetime.datetime.now()}\n")
+        f.write(f"{'='*80}\n\n")
+except:
+    pass  # Don't fail if can't write
+
 def patch_comprehensive_cache_debugging():
     """
     Comprehensive cache debugging to track memory corruption progression
