@@ -382,14 +382,95 @@ def patch_grpo_cache_reset():
     except Exception as e:
         print(f"Warning: Failed to patch GRPO cache reset: {e}")
 
+def patch_initial_cache_position_creation():
+    """
+    Fix the INITIAL creation of cache_position in generation methods.
+    The bug is that cache_position = torch.arange(cur_len) creates a tensor
+    with cur_len elements (e.g., 1156 elements) instead of a scalar/single element.
+
+    For sliding window models, cache_position should be a single position value,
+    not a range of positions.
+    """
+    try:
+        from transformers.generation.utils import GenerationMixin
+        import torch
+
+        # Patch the _sample method where cache_position is initially created
+        original_sample = GenerationMixin._sample
+
+        def fixed_sample(self, *args, **kwargs):
+            # Call the original _sample
+            result = original_sample(self, *args, **kwargs)
+            return result
+
+        # Monkey-patch _sample to intercept model_kwargs
+        def patched_sample(
+            self,
+            input_ids,
+            logits_processor,
+            stopping_criteria,
+            generation_config,
+            synced_gpus,
+            streamer,
+            **model_kwargs,
+        ):
+            print("🔍 PATCH: patched_sample called")
+
+            # Check if this is a sliding window model
+            sliding_window = getattr(self.config, 'sliding_window', None)
+            print(f"   Model sliding_window config: {sliding_window}")
+
+            # Fix cache_position if it was created as arange
+            if "cache_position" in model_kwargs:
+                cache_pos = model_kwargs["cache_position"]
+                print(f"   Initial cache_position shape: {cache_pos.shape if hasattr(cache_pos, 'shape') else 'N/A'}")
+
+                # If it's a multi-element tensor from torch.arange, fix it
+                if hasattr(cache_pos, 'shape') and len(cache_pos.shape) > 0 and cache_pos.shape[0] > 1:
+                    print(f"🔧 CRITICAL FIX: cache_position has {cache_pos.shape[0]} elements (from torch.arange)")
+                    print(f"   Values: {cache_pos[:10].tolist() if cache_pos.shape[0] >= 10 else cache_pos.tolist()}")
+
+                    # For sliding window, use the last position wrapped to window size
+                    if sliding_window is not None:
+                        last_pos = cache_pos[-1].item()
+                        wrapped_pos = last_pos % sliding_window
+                        print(f"   Wrapping position {last_pos} -> {wrapped_pos} (window: {sliding_window})")
+                        model_kwargs["cache_position"] = torch.tensor([wrapped_pos],
+                                                                       device=cache_pos.device,
+                                                                       dtype=cache_pos.dtype)
+                    else:
+                        # Non-sliding window: use last position
+                        last_pos = cache_pos[-1].item()
+                        print(f"   Using last position: {last_pos}")
+                        model_kwargs["cache_position"] = torch.tensor([last_pos],
+                                                                       device=cache_pos.device,
+                                                                       dtype=cache_pos.dtype)
+                    print(f"   ✅ Fixed cache_position to single element: {model_kwargs['cache_position']}")
+
+            # Call original _sample with fixed kwargs
+            return original_sample(
+                self, input_ids, logits_processor, stopping_criteria,
+                generation_config, synced_gpus, streamer, **model_kwargs
+            )
+
+        GenerationMixin._sample = patched_sample
+        print("✅ Applied initial cache_position creation fix (patches _sample)")
+
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"Warning: Failed to patch initial cache_position creation: {e}")
+
 # Apply patches immediately on module import
 patch_cache_position_generation()
 patch_sliding_window_cache_creation()
 patch_flex_attention_safety()
 patch_grpo_cache_reset()
+patch_initial_cache_position_creation()  # NEW: Fix initial creation
 
 # Also add to list for tracking
 TEMPORARY_PATCHES.append(patch_cache_position_generation)
 TEMPORARY_PATCHES.append(patch_sliding_window_cache_creation)
 TEMPORARY_PATCHES.append(patch_flex_attention_safety)
 TEMPORARY_PATCHES.append(patch_grpo_cache_reset)
+TEMPORARY_PATCHES.append(patch_initial_cache_position_creation)
