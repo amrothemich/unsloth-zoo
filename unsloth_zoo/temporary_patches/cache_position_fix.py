@@ -275,15 +275,15 @@ def patch_sliding_window_cache_creation():
 def patch_flex_attention_safety():
     """
     Add safety checks to flex_attention create_mask to prevent CUDA errors
-    from corrupted parameters.
+    from corrupted parameters. Includes GPU recovery mechanisms.
     """
     try:
         from torch.nn.attention.flex_attention import create_mask
         import torch
-        
+
         # Store original create_mask
         original_create_mask = create_mask
-        
+
         def safe_create_mask(mod_fn, B, H, Q_LEN, KV_LEN, device):
             try:
                 # Validate parameters before calling torch.arange
@@ -299,29 +299,91 @@ def patch_flex_attention_safety():
                 if KV_LEN is None or KV_LEN <= 0 or KV_LEN > 100000:
                     print(f"⚠️  Invalid KV_LEN parameter in create_mask: {KV_LEN}, using KV_LEN=1")
                     KV_LEN = 1
-                
+
                 return original_create_mask(mod_fn, B, H, Q_LEN, KV_LEN, device)
-                
-            except Exception as e:
-                print(f"🚨 CUDA error in create_mask - GPU memory corrupted: {e}")
-                print(f"   Parameters: B={B}, H={H}, Q_LEN={Q_LEN}, KV_LEN={KV_LEN}, device={device}")
-                print(f"🛑 STOPPING EXECUTION - GPU corruption detected!")
-                print(f"   The cache_position corruption has spread to GPU memory.")
-                print(f"   Continuing would produce garbage results.")
-                # Re-raise the error instead of masking it with CPU fallbacks
-                raise RuntimeError(f"GPU memory corruption detected in flex_attention. "
-                                 f"Root cause: corrupted cache_position tensors. "
-                                 f"Original error: {e}") from e
-        
+
+            except RuntimeError as e:
+                error_msg = str(e)
+                if "CUDA error: an illegal memory access" in error_msg or "illegal memory access" in error_msg:
+                    print(f"🚨 CUDA memory error in create_mask - attempting recovery: {e}")
+                    print(f"   Parameters: B={B}, H={H}, Q_LEN={Q_LEN}, KV_LEN={KV_LEN}, device={device}")
+                    print(f"🔧 Attempting GPU cache clear and synchronization...")
+
+                    try:
+                        # Clear CUDA cache and synchronize to recover from corruption
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                            torch.cuda.synchronize()
+                            print(f"   ✅ GPU cache cleared and synchronized")
+
+                        # Retry with fresh GPU state
+                        print(f"   🔄 Retrying create_mask after GPU recovery...")
+                        return original_create_mask(mod_fn, B, H, Q_LEN, KV_LEN, device)
+
+                    except Exception as retry_e:
+                        print(f"   ❌ Recovery failed: {retry_e}")
+                        print(f"🛑 STOPPING EXECUTION - Unrecoverable GPU corruption")
+                        raise RuntimeError(f"GPU memory corruption detected in flex_attention. "
+                                         f"Root cause: corrupted cache_position tensors. "
+                                         f"Original error: {e}. Recovery attempt failed: {retry_e}") from e
+                else:
+                    # Non-CUDA error, re-raise as-is
+                    raise
+
         # Monkey patch the function
         torch.nn.attention.flex_attention.create_mask = safe_create_mask
-        print("✅ Applied flex attention safety patch")
-        
+        print("✅ Applied flex attention safety patch with GPU recovery")
+
     except ImportError:
         pass
     except Exception as e:
         print(f"Warning: Failed to patch flex attention: {e}")
 
+def patch_grpo_cache_reset():
+    """
+    Ensure cache is properly reset between GRPO generations.
+    GRPO generates multiple completions per prompt, and we need to ensure
+    cache_position doesn't accumulate across these generations.
+    """
+    try:
+        from transformers import GenerationMixin
+        import torch
+
+        original_prepare_inputs = GenerationMixin.prepare_inputs_for_generation
+
+        def safe_prepare_inputs_for_generation(self, input_ids, **kwargs):
+            # Get the prepared inputs from the original method
+            model_inputs = original_prepare_inputs(self, input_ids, **kwargs)
+
+            # Ensure cache_position is always a single-element tensor, never accumulated
+            if "cache_position" in model_inputs and model_inputs["cache_position"] is not None:
+                cache_pos = model_inputs["cache_position"]
+
+                # Check if it's accumulated (multiple elements)
+                if hasattr(cache_pos, 'shape') and len(cache_pos.shape) > 0 and cache_pos.shape[0] > 1:
+                    # Take only the last position and create a fresh tensor
+                    last_pos = cache_pos[-1].item() if hasattr(cache_pos[-1], 'item') else cache_pos[-1]
+
+                    # Get sliding window size for wrapping
+                    sliding_window = getattr(self.config, 'sliding_window', 128)
+                    if sliding_window is not None and last_pos >= sliding_window:
+                        last_pos = last_pos % sliding_window
+
+                    model_inputs["cache_position"] = torch.tensor([last_pos],
+                                                                   device=cache_pos.device,
+                                                                   dtype=cache_pos.dtype)
+
+            return model_inputs
+
+        GenerationMixin.prepare_inputs_for_generation = safe_prepare_inputs_for_generation
+        print("✅ Applied GRPO cache reset patch")
+
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"Warning: Failed to patch GRPO cache reset: {e}")
+
 TEMPORARY_PATCHES.append(patch_cache_position_generation)
 TEMPORARY_PATCHES.append(patch_sliding_window_cache_creation)
 TEMPORARY_PATCHES.append(patch_flex_attention_safety)
+TEMPORARY_PATCHES.append(patch_grpo_cache_reset)
