@@ -1642,13 +1642,15 @@ torch_add   = torch.add
 torch_float16 = torch.float16
 # @torch.compile(fullgraph = False, dynamic = True, options = torch_compile_options)
 def lora_forward(result, lora_A, lora_B, dropout, x, scaling):
-    xA = dropout(x.to(torch_float16)) @ lora_A.weight.to(torch_float16).t()
+    # Use input tensor dtype instead of forcing float16
+    target_dtype = x.dtype
+    xA = dropout(x.to(target_dtype)) @ lora_A.weight.to(target_dtype).t()
     # output = result + scaling * xA @ lora_B.weight.t()
     shape = result.shape
     output = torch_addmm(
-        result.view(-1, shape[-1]).to(torch_float16),
+        result.view(-1, shape[-1]).to(target_dtype),
         xA.view(-1, xA.shape[-1]),
-        lora_B.weight.to(torch_float16).t(),
+        lora_B.weight.to(target_dtype).t(),
         alpha = scaling,
         beta = 1,
     ).view(shape)
@@ -1657,7 +1659,7 @@ def lora_forward(result, lora_A, lora_B, dropout, x, scaling):
     if bias is not None:
         output = torch_add(
         output,
-        bias.to(torch_float16),
+        bias.to(target_dtype),
         alpha = scaling,
     )
     return output
