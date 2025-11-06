@@ -1296,12 +1296,13 @@ TEMPORARY_PATCHES.append(patch_GptOssModel)
 
 def patch_GptOssForCausalLM():
     """Patch the CausalLM forward to use inference mode during eval"""
-    if "gpt_oss" not in os.environ.get("UNSLOTH_MODEL_NAME", ""): return
+    # Try to import - if it doesn't exist, this model isn't being used
     try:
         import transformers.models.gpt_oss.modeling_gpt_oss
         GptOssForCausalLM = transformers.models.gpt_oss.modeling_gpt_oss.GptOssForCausalLM
     except Exception as e:
-        return raise_error("transformers.models.gpt_oss.modeling_gpt_oss.GptOssForCausalLM", e)
+        # GptOss model not available, skip this patch
+        return
 
     # Get the original forward - might already be patched by unsloth
     original_forward = GptOssForCausalLM.forward
