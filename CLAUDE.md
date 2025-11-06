@@ -61,11 +61,12 @@ self._actual_window_size = sliding_window if sliding_window is not None else 128
 - **Conservative Approach**: Extensive logging to detect when repairs trigger
 
 ## Current Status
-- ✅ **Root cause identified**: Window size confusion (3299 vs 128)
+- ✅ **Root cause identified**: `cache_position = torch.arange(cur_len)` creates 1156-element tensor
 - ✅ **Core fix implemented**: Using correct sliding window size
-- ✅ **Cache corruption detection**: Comprehensive logging and repair mechanisms  
+- ✅ **Cache corruption detection**: Comprehensive logging and repair mechanisms
 - ✅ **Fixes committed**: Available on `fix-grpo` branch
-- 🔄 **Validation in progress**: Testing that fixes don't introduce silent corruption
+- ❌ **Issue**: Patches intercept wrong point - cache_position created INSIDE _sample, not in model_kwargs
+- 🔄 **Next**: Need to patch torch.arange calls or the line where cache_position is created (line ~2690 in generation/utils.py)
 
 ## Installation
 ```bash

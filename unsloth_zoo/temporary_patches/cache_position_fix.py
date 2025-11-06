@@ -388,12 +388,13 @@ def patch_initial_cache_position_creation():
     The bug is that cache_position = torch.arange(cur_len) creates a tensor
     with cur_len elements (e.g., 1156 elements) instead of a scalar/single element.
 
-    For sliding window models, cache_position should be a single position value,
-    not a range of positions.
+    This patches the _sample method to intercept and fix cache_position immediately
+    after it's created by the original code.
     """
     try:
         from transformers.generation.utils import GenerationMixin
         import torch
+        import inspect
 
         # Check if already patched to avoid double-patching
         if hasattr(GenerationMixin._sample, '_unsloth_cache_position_patched'):
@@ -403,7 +404,10 @@ def patch_initial_cache_position_creation():
         # Save the original _sample method
         original_sample = GenerationMixin._sample
 
-        # Monkey-patch _sample to intercept model_kwargs
+        # Get the original source to understand its structure
+        print("🔍 Analyzing original _sample method...")
+
+        # Wrapper that fixes cache_position immediately after original creates it
         def patched_sample(
             self,
             input_ids,
@@ -414,50 +418,59 @@ def patch_initial_cache_position_creation():
             streamer,
             **model_kwargs,
         ):
-            print("🔍 PATCH: patched_sample called")
-
             # Check if this is a sliding window model
             sliding_window = getattr(self.config, 'sliding_window', None)
-            print(f"   Model sliding_window config: {sliding_window}")
 
-            # Fix cache_position if it was created as arange
-            if "cache_position" in model_kwargs:
-                cache_pos = model_kwargs["cache_position"]
-                print(f"   Initial cache_position shape: {cache_pos.shape if hasattr(cache_pos, 'shape') else 'N/A'}")
+            # Monkey-patch torch.arange temporarily to fix cache_position creation
+            original_arange = torch.arange
+            arange_call_count = [0]  # Use list for mutable counter in closure
 
-                # If it's a multi-element tensor from torch.arange, fix it
-                if hasattr(cache_pos, 'shape') and len(cache_pos.shape) > 0 and cache_pos.shape[0] > 1:
-                    print(f"🔧 CRITICAL FIX: cache_position has {cache_pos.shape[0]} elements (from torch.arange)")
-                    print(f"   Values: {cache_pos[:10].tolist() if cache_pos.shape[0] >= 10 else cache_pos.tolist()}")
+            def fixed_arange(*args, **kwargs):
+                result = original_arange(*args, **kwargs)
+                arange_call_count[0] += 1
 
-                    # For sliding window, use the last position wrapped to window size
-                    if sliding_window is not None:
-                        last_pos = cache_pos[-1].item()
-                        wrapped_pos = last_pos % sliding_window
-                        print(f"   Wrapping position {last_pos} -> {wrapped_pos} (window: {sliding_window})")
-                        model_kwargs["cache_position"] = torch.tensor([wrapped_pos],
-                                                                       device=cache_pos.device,
-                                                                       dtype=cache_pos.dtype)
-                    else:
-                        # Non-sliding window: use last position
-                        last_pos = cache_pos[-1].item()
-                        print(f"   Using last position: {last_pos}")
-                        model_kwargs["cache_position"] = torch.tensor([last_pos],
-                                                                       device=cache_pos.device,
-                                                                       dtype=cache_pos.dtype)
-                    print(f"   ✅ Fixed cache_position to single element: {model_kwargs['cache_position']}")
+                # Check if this looks like cache_position creation (single arg matching sequence length)
+                # In _sample, cache_position is created as: torch.arange(cur_len, device=input_ids.device)
+                if len(args) == 1 and 'device' in kwargs:
+                    cur_len = args[0]
+                    # If this is creating a large arange for a sliding window model, fix it
+                    if sliding_window is not None and cur_len > sliding_window:
+                        print(f"🔧 INTERCEPTED: torch.arange({cur_len}) for sliding window model")
+                        print(f"   Sliding window size: {sliding_window}")
+                        print(f"   Fixing to single-element tensor with wrapped position")
 
-            # Call original _sample with fixed kwargs
-            return original_sample(
-                self, input_ids, logits_processor, stopping_criteria,
-                generation_config, synced_gpus, streamer, **model_kwargs
-            )
+                        # For sliding window, position should wrap
+                        wrapped_pos = (cur_len - 1) % sliding_window
+                        fixed_result = original_arange(1, **kwargs) * 0 + wrapped_pos  # Create [wrapped_pos]
+                        print(f"   ✅ Fixed: Changed arange({cur_len}) to tensor([{wrapped_pos}])")
+                        return fixed_result
+
+                return result
+
+            # Temporarily replace torch.arange
+            torch.arange = fixed_arange
+
+            try:
+                # Call original _sample - it will use our fixed_arange
+                result = original_sample(
+                    self, input_ids, logits_processor, stopping_criteria,
+                    generation_config, synced_gpus, streamer, **model_kwargs
+                )
+
+                if arange_call_count[0] > 0:
+                    print(f"   torch.arange was called {arange_call_count[0]} times during _sample")
+
+                return result
+            finally:
+                # Restore original torch.arange
+                torch.arange = original_arange
 
         # Mark the patched function to avoid double-patching
         patched_sample._unsloth_cache_position_patched = True
 
         GenerationMixin._sample = patched_sample
-        print("✅ Applied initial cache_position creation fix (patches _sample)")
+        print("✅ Applied initial cache_position creation fix (intercepts torch.arange)")
+        print("   This patches torch.arange calls inside _sample to fix sliding window cache_position")
 
     except ImportError:
         pass
