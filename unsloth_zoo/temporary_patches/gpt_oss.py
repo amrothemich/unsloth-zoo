@@ -1316,18 +1316,52 @@ def patch_GptOssForCausalLM():
     def inference_mode_wrapper(self, *args, **kwargs):
         """Wrapper that ensures inference mode during eval to prevent gradient allocation"""
         # CRITICAL FIX: Fix cache_position IMMEDIATELY at forward entry if corrupted
-        if 'cache_position' in kwargs and kwargs['cache_position'] is not None:
+        # cache_position can be passed as POSITIONAL arg #9 (index 8) OR as keyword arg
+
+        cache_pos = None
+        cache_pos_location = None  # Track where we found it: 'args' or 'kwargs'
+
+        # Check positional arguments first (cache_position is arg #9, index 8)
+        # Args order: input_ids, attention_mask, position_ids, past_key_values, inputs_embeds,
+        #             labels, use_cache, output_router_logits, cache_position, logits_to_keep
+        if len(args) >= 9 and args[8] is not None:
+            cache_pos = args[8]
+            cache_pos_location = 'args'
+            print(f"🔍 FORWARD: Found cache_position in positional args[8]: shape={cache_pos.shape if hasattr(cache_pos, 'shape') else 'N/A'}")
+
+        # Also check kwargs in case it's passed as keyword argument
+        elif 'cache_position' in kwargs and kwargs['cache_position'] is not None:
             cache_pos = kwargs['cache_position']
-            if hasattr(cache_pos, 'shape') and len(cache_pos.shape) > 0 and cache_pos.shape[0] > 1:
-                # Cache position is corrupted! Fix it NOW
-                print(f"🚨 FORWARD FIX: cache_position corrupted at forward entry! Shape: {cache_pos.shape}")
-                last_pos = cache_pos[-1].item()
-                sliding_window = getattr(self.config, 'sliding_window', None)
-                if sliding_window is not None and last_pos >= sliding_window:
-                    last_pos = last_pos % sliding_window
-                    print(f"   Wrapped {cache_pos[-1].item()} -> {last_pos} (window: {sliding_window})")
-                kwargs['cache_position'] = torch.tensor([last_pos], device=cache_pos.device, dtype=cache_pos.dtype)
-                print(f"   ✅ Fixed to: {kwargs['cache_position']}")
+            cache_pos_location = 'kwargs'
+            print(f"🔍 FORWARD: Found cache_position in kwargs: shape={cache_pos.shape if hasattr(cache_pos, 'shape') else 'N/A'}")
+
+        # If we found cache_position, check if it's corrupted
+        if cache_pos is not None and hasattr(cache_pos, 'shape') and len(cache_pos.shape) > 0 and cache_pos.shape[0] > 1:
+            # Cache position is corrupted! Fix it NOW
+            print(f"🚨 FORWARD FIX: cache_position corrupted at forward entry! Shape: {cache_pos.shape}")
+            print(f"   First 10 values: {cache_pos[:10].tolist() if cache_pos.shape[0] >= 10 else cache_pos.tolist()}")
+
+            last_pos = cache_pos[-1].item()
+            sliding_window = getattr(self.config, 'sliding_window', None)
+
+            if sliding_window is not None and last_pos >= sliding_window:
+                wrapped_pos = last_pos % sliding_window
+                print(f"   Wrapping {last_pos} -> {wrapped_pos} (window: {sliding_window})")
+                last_pos = wrapped_pos
+
+            fixed_cache_pos = torch.tensor([last_pos], device=cache_pos.device, dtype=cache_pos.dtype)
+            print(f"   ✅ Fixed to: {fixed_cache_pos}")
+
+            # Update the cache_position in the correct location
+            if cache_pos_location == 'args':
+                # Reconstruct args tuple with fixed cache_position at index 8
+                args = list(args)
+                args[8] = fixed_cache_pos
+                args = tuple(args)
+                print(f"   ✅ Updated args[8] with fixed cache_position")
+            elif cache_pos_location == 'kwargs':
+                kwargs['cache_position'] = fixed_cache_pos
+                print(f"   ✅ Updated kwargs['cache_position'] with fixed value")
 
         if not self.training:
             # Use inference_mode during eval

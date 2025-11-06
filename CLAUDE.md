@@ -65,8 +65,11 @@ self._actual_window_size = sliding_window if sliding_window is not None else 128
 - ✅ **Core fix implemented**: Using correct sliding window size
 - ✅ **Cache corruption detection**: Comprehensive logging and repair mechanisms
 - ✅ **Fixes committed**: Available on `fix-grpo` branch
-- ❌ **Issue**: Patches intercept wrong point - cache_position created INSIDE _sample, not in model_kwargs
-- 🔄 **Next**: Need to patch torch.arange calls or the line where cache_position is created (line ~2690 in generation/utils.py)
+- ✅ **Positional argument fix**: Modified inference_mode_wrapper to check args[8] for cache_position
+- ✅ **Critical Discovery**: cache_position passed as POSITIONAL arg #9 (index 8), not in kwargs
+- ✅ **Forward fix updated**: Now intercepts cache_position in both positional args AND kwargs
+- ❌ **All prepare_inputs_for_generation patches**: Never executed (method not called in generation flow)
+- 🔄 **Ready for testing**: New fix should intercept and repair cache_position before corruption causes crash
 
 ## Installation
 ```bash
