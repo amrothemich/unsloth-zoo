@@ -1397,14 +1397,21 @@ Last 10 values: {cache_pos[-10:].tolist()}
     logger.info("Unsloth: Patched GptOssForCausalLM.forward with inference_mode wrapper")
 
     # CRITICAL: Patch BOTH StaticLayer and SlidingWindowLayer to fix cache_position corruption
+    # Use a guard to ensure we only patch once and save the ORIGINAL unpatched version
     try:
         from transformers.cache_utils import SlidingWindowLayer, StaticLayer
         import torch
 
         print("🚨🚨🚨 About to patch StaticLayer.update and SlidingWindowLayer.update from gpt_oss.py")
 
-        # Patch StaticLayer (where the actual error occurs!)
-        original_static_update = StaticLayer.update
+        # Guard: Only save original if not already patched
+        if not hasattr(patch_GptOssForCausalLM, '_original_static_update'):
+            patch_GptOssForCausalLM._original_static_update = StaticLayer.update
+            print("✅ Saved original StaticLayer.update")
+        else:
+            print("⚠️  StaticLayer.update already patched, using saved original")
+
+        original_static_update = patch_GptOssForCausalLM._original_static_update
 
         def fixed_static_layer_update(self, key_states, value_states, cache_kwargs):
             """Fixed StaticLayer.update that repairs cache_position corruption"""
@@ -1426,8 +1433,14 @@ Last 10 values: {cache_pos[-10:].tolist()}
         StaticLayer.update = fixed_static_layer_update
         print("✅✅✅ Successfully patched StaticLayer.update!")
 
-        # Also patch SlidingWindowLayer
-        original_sliding_update = SlidingWindowLayer.update
+        # Guard: Only save original if not already patched
+        if not hasattr(patch_GptOssForCausalLM, '_original_sliding_update'):
+            patch_GptOssForCausalLM._original_sliding_update = SlidingWindowLayer.update
+            print("✅ Saved original SlidingWindowLayer.update")
+        else:
+            print("⚠️  SlidingWindowLayer.update already patched, using saved original")
+
+        original_sliding_update = patch_GptOssForCausalLM._original_sliding_update
 
         def fixed_sliding_window_update(self, key_states, value_states, cache_kwargs):
             """Fixed SlidingWindowLayer.update that repairs cache_position corruption"""

@@ -69,7 +69,10 @@ self._actual_window_size = sliding_window if sliding_window is not None else 128
 - ✅ **Critical Discovery**: cache_position passed as POSITIONAL arg #9 (index 8), not in kwargs
 - ✅ **Forward fix updated**: Now intercepts cache_position in both positional args AND kwargs
 - ❌ **All prepare_inputs_for_generation patches**: Never executed (method not called in generation flow)
-- 🔄 **Ready for testing**: New fix should intercept and repair cache_position before corruption causes crash
+- ✅ **BREAKTHROUGH**: Error occurs in StaticLayer.update, not SlidingWindowLayer.update!
+- ✅ **StaticLayer patch implemented**: Patched BOTH StaticLayer and SlidingWindowLayer in gpt_oss.py
+- 🔄 **Testing commit 230ea98**: Patching both cache layer types to intercept and repair cache_position
+- 🔄 **Run ID 146063302219651**: Currently running with StaticLayer fix
 
 ## Installation
 ```bash
@@ -82,6 +85,8 @@ pip install 'git+https://github.com/amrothemich/unsloth.git@fix-grpo#egg=unsloth
 - `e2e6b74`: Prevent cache position accumulation at source + dtype fixes
 - `c8f0afc`: Critical fix: Use sliding_window (128) instead of max_cache_len (3299)
 - `41a01fa`: Fix UnboundLocalError in cache position overflow handling
+- `735f734`: Add verification prints to track module import
+- `230ea98`: **BREAKTHROUGH**: Patch StaticLayer.update in addition to SlidingWindowLayer (this is where the actual error occurs!)
 
 ## Environment Requirements
 - **GPU**: A100-40GB (for testing with Modal)
