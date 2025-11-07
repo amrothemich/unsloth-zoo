@@ -91,11 +91,14 @@ except:
 pass
 # Log Unsloth-Zoo Utilities
 os.environ["UNSLOTH_ZOO_IS_PRESENT"] = "1"
+
+print("🚨🚨🚨 UNSLOTH_ZOO __init__.py: About to import temporary_patches (commit 2bddf2e+) 🚨🚨🚨")
 del os
 
 from .temporary_patches import (
     encode_conversations_with_harmony,
 )
+print("🚨🚨🚨 UNSLOTH_ZOO __init__.py: Finished importing temporary_patches 🚨🚨🚨")
 from .rl_environments import (
     check_python_modules,
     create_locked_down_function,
