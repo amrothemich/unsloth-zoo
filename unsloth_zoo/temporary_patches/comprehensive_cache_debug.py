@@ -14,6 +14,11 @@
 # You should have received a copy of the GNU Lesser General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+# CRITICAL: Print IMMEDIATELY to verify this module is being imported
+print("🚨🚨🚨 COMPREHENSIVE_CACHE_DEBUG MODULE STARTING IMPORT - COMMIT 4c37246+ 🚨🚨🚨")
+import sys
+print(f"🚨🚨🚨 Python version: {sys.version} 🚨🚨🚨")
+
 from .common import TEMPORARY_PATCHES
 from .utils import patch_function
 import traceback
@@ -21,11 +26,11 @@ import gc
 import os
 import datetime
 import io
-import sys
 
 # Just print - file writes don't work reliably in Databricks notebooks
 print("="*80)
 print(f"🔧 comprehensive_cache_debug MODULE LOADED at {datetime.datetime.now()}")
+print(f"🔧 This is commit 4c37246 or later with file I/O removed")
 print("="*80)
 
 def patch_comprehensive_cache_debugging():
