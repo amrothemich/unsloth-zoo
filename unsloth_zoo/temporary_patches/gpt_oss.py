@@ -1396,6 +1396,43 @@ Last 10 values: {cache_pos[-10:].tolist()}
     GptOssForCausalLM.forward = inference_mode_wrapper
     logger.info("Unsloth: Patched GptOssForCausalLM.forward with inference_mode wrapper")
 
+    # CRITICAL: Also patch SlidingWindowLayer.update to fix cache_position corruption at the source
+    try:
+        from transformers.cache_utils import SlidingWindowLayer
+        import torch
+
+        print("🚨🚨🚨 About to patch SlidingWindowLayer.update from gpt_oss.py")
+
+        original_update = SlidingWindowLayer.update
+
+        def fixed_sliding_window_update(self, key_states, value_states, cache_kwargs):
+            """Fixed version that repairs cache_position corruption"""
+            print(f"🔧 fixed_sliding_window_update called!")
+
+            # FIX cache_position if corrupted
+            if "cache_position" in cache_kwargs and cache_kwargs["cache_position"] is not None:
+                cache_pos = cache_kwargs["cache_position"]
+                if hasattr(cache_pos, 'shape') and len(cache_pos.shape) > 0 and cache_pos.shape[0] > 1:
+                    print(f"🚨 CORRUPTION: cache_position has {cache_pos.shape[0]} elements, fixing!")
+                    last_pos = cache_pos[-1].item()
+                    sliding_window = getattr(self, 'sliding_window', None)
+                    if sliding_window is not None and last_pos >= sliding_window:
+                        last_pos = last_pos % sliding_window
+                    cache_kwargs["cache_position"] = torch.tensor([last_pos],
+                                                                   device=cache_pos.device,
+                                                                   dtype=cache_pos.dtype)
+                    print(f"✅ Fixed to single position: {last_pos}")
+
+            return original_update(self, key_states, value_states, cache_kwargs)
+
+        SlidingWindowLayer.update = fixed_sliding_window_update
+        print("✅✅✅ Successfully patched SlidingWindowLayer.update!")
+
+    except Exception as e:
+        print(f"❌ Failed to patch SlidingWindowLayer.update: {e}")
+        import traceback
+        traceback.print_exc()
+
     # CRITICAL FIX: Patch prepare_inputs_for_generation to fix cache_position
     # This is the LAST point before the forward pass where we can fix cache_position
     # Get the original method from the MRO (might be inherited from GenerationMixin)
