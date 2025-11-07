@@ -1396,24 +1396,48 @@ Last 10 values: {cache_pos[-10:].tolist()}
     GptOssForCausalLM.forward = inference_mode_wrapper
     logger.info("Unsloth: Patched GptOssForCausalLM.forward with inference_mode wrapper")
 
-    # CRITICAL: Also patch SlidingWindowLayer.update to fix cache_position corruption at the source
+    # CRITICAL: Patch BOTH StaticLayer and SlidingWindowLayer to fix cache_position corruption
     try:
-        from transformers.cache_utils import SlidingWindowLayer
+        from transformers.cache_utils import SlidingWindowLayer, StaticLayer
         import torch
 
-        print("🚨🚨🚨 About to patch SlidingWindowLayer.update from gpt_oss.py")
+        print("🚨🚨🚨 About to patch StaticLayer.update and SlidingWindowLayer.update from gpt_oss.py")
 
-        original_update = SlidingWindowLayer.update
+        # Patch StaticLayer (where the actual error occurs!)
+        original_static_update = StaticLayer.update
+
+        def fixed_static_layer_update(self, key_states, value_states, cache_kwargs):
+            """Fixed StaticLayer.update that repairs cache_position corruption"""
+            print(f"🔧 fixed_static_layer_update called!")
+
+            # FIX cache_position if corrupted
+            if "cache_position" in cache_kwargs and cache_kwargs["cache_position"] is not None:
+                cache_pos = cache_kwargs["cache_position"]
+                if hasattr(cache_pos, 'shape') and len(cache_pos.shape) > 0 and cache_pos.shape[0] > 1:
+                    print(f"🚨 STATIC CORRUPTION: cache_position has {cache_pos.shape[0]} elements, fixing!")
+                    last_pos = cache_pos[-1].item()
+                    cache_kwargs["cache_position"] = torch.tensor([last_pos],
+                                                                   device=cache_pos.device,
+                                                                   dtype=cache_pos.dtype)
+                    print(f"✅ Fixed StaticLayer to single position: {last_pos}")
+
+            return original_static_update(self, key_states, value_states, cache_kwargs)
+
+        StaticLayer.update = fixed_static_layer_update
+        print("✅✅✅ Successfully patched StaticLayer.update!")
+
+        # Also patch SlidingWindowLayer
+        original_sliding_update = SlidingWindowLayer.update
 
         def fixed_sliding_window_update(self, key_states, value_states, cache_kwargs):
-            """Fixed version that repairs cache_position corruption"""
+            """Fixed SlidingWindowLayer.update that repairs cache_position corruption"""
             print(f"🔧 fixed_sliding_window_update called!")
 
             # FIX cache_position if corrupted
             if "cache_position" in cache_kwargs and cache_kwargs["cache_position"] is not None:
                 cache_pos = cache_kwargs["cache_position"]
                 if hasattr(cache_pos, 'shape') and len(cache_pos.shape) > 0 and cache_pos.shape[0] > 1:
-                    print(f"🚨 CORRUPTION: cache_position has {cache_pos.shape[0]} elements, fixing!")
+                    print(f"🚨 SLIDING CORRUPTION: cache_position has {cache_pos.shape[0]} elements, fixing!")
                     last_pos = cache_pos[-1].item()
                     sliding_window = getattr(self, 'sliding_window', None)
                     if sliding_window is not None and last_pos >= sliding_window:
@@ -1421,15 +1445,15 @@ Last 10 values: {cache_pos[-10:].tolist()}
                     cache_kwargs["cache_position"] = torch.tensor([last_pos],
                                                                    device=cache_pos.device,
                                                                    dtype=cache_pos.dtype)
-                    print(f"✅ Fixed to single position: {last_pos}")
+                    print(f"✅ Fixed SlidingWindowLayer to single position: {last_pos}")
 
-            return original_update(self, key_states, value_states, cache_kwargs)
+            return original_sliding_update(self, key_states, value_states, cache_kwargs)
 
         SlidingWindowLayer.update = fixed_sliding_window_update
         print("✅✅✅ Successfully patched SlidingWindowLayer.update!")
 
     except Exception as e:
-        print(f"❌ Failed to patch SlidingWindowLayer.update: {e}")
+        print(f"❌ Failed to patch cache layers: {e}")
         import traceback
         traceback.print_exc()
 
