@@ -1417,16 +1417,26 @@ Last 10 values: {cache_pos[-10:].tolist()}
             """Fixed StaticLayer.update that repairs cache_position corruption"""
             print(f"🔧 fixed_static_layer_update called!")
 
-            # FIX cache_position if corrupted
-            if "cache_position" in cache_kwargs and cache_kwargs["cache_position"] is not None:
-                cache_pos = cache_kwargs["cache_position"]
-                if hasattr(cache_pos, 'shape') and len(cache_pos.shape) > 0 and cache_pos.shape[0] > 1:
-                    print(f"🚨 STATIC CORRUPTION: cache_position has {cache_pos.shape[0]} elements, fixing!")
-                    last_pos = cache_pos[-1].item()
-                    cache_kwargs["cache_position"] = torch.tensor([last_pos],
-                                                                   device=cache_pos.device,
-                                                                   dtype=cache_pos.dtype)
-                    print(f"✅ Fixed StaticLayer to single position: {last_pos}")
+            # Get cache_position
+            cache_pos = cache_kwargs.get("cache_position")
+
+            # CRITICAL FIX: The actual problem is key_states.size(2) != cache_position.size(0)
+            # Error: "Number of indices (1) should be equal to source.size(dim) (1156)"
+            # This means cache_position has 1 element but key_states has 1156 elements on dim 2
+            if cache_pos is not None and hasattr(key_states, 'shape') and len(key_states.shape) >= 3:
+                cache_pos_size = cache_pos.size(0) if hasattr(cache_pos, 'size') else 1
+                key_states_size = key_states.size(2)
+
+                if key_states_size != cache_pos_size:
+                    print(f"🚨 SHAPE MISMATCH: key_states.size(2)={key_states_size}, cache_pos.size(0)={cache_pos_size}")
+
+                    # Fix: Take only the last position from key_states
+                    # key_states shape is typically [batch, heads, seq_len, head_dim]
+                    # We need to slice seq_len dimension to match cache_position
+                    key_states = key_states[:, :, -cache_pos_size:, :]
+                    value_states = value_states[:, :, -cache_pos_size:, :]
+
+                    print(f"✅ Fixed: Sliced key/value_states to last {cache_pos_size} position(s)")
 
             return original_static_update(self, key_states, value_states, cache_kwargs)
 
@@ -1446,19 +1456,26 @@ Last 10 values: {cache_pos[-10:].tolist()}
             """Fixed SlidingWindowLayer.update that repairs cache_position corruption"""
             print(f"🔧 fixed_sliding_window_update called!")
 
-            # FIX cache_position if corrupted
-            if "cache_position" in cache_kwargs and cache_kwargs["cache_position"] is not None:
-                cache_pos = cache_kwargs["cache_position"]
-                if hasattr(cache_pos, 'shape') and len(cache_pos.shape) > 0 and cache_pos.shape[0] > 1:
-                    print(f"🚨 SLIDING CORRUPTION: cache_position has {cache_pos.shape[0]} elements, fixing!")
-                    last_pos = cache_pos[-1].item()
-                    sliding_window = getattr(self, 'sliding_window', None)
-                    if sliding_window is not None and last_pos >= sliding_window:
-                        last_pos = last_pos % sliding_window
-                    cache_kwargs["cache_position"] = torch.tensor([last_pos],
-                                                                   device=cache_pos.device,
-                                                                   dtype=cache_pos.dtype)
-                    print(f"✅ Fixed SlidingWindowLayer to single position: {last_pos}")
+            # Get cache_position
+            cache_pos = cache_kwargs.get("cache_position")
+
+            # CRITICAL FIX: The actual problem is key_states.size(2) != cache_position.size(0)
+            # Error: "Number of indices (1) should be equal to source.size(dim) (1156)"
+            # This means cache_position has 1 element but key_states has 1156 elements on dim 2
+            if cache_pos is not None and hasattr(key_states, 'shape') and len(key_states.shape) >= 3:
+                cache_pos_size = cache_pos.size(0) if hasattr(cache_pos, 'size') else 1
+                key_states_size = key_states.size(2)
+
+                if key_states_size != cache_pos_size:
+                    print(f"🚨 SLIDING SHAPE MISMATCH: key_states.size(2)={key_states_size}, cache_pos.size(0)={cache_pos_size}")
+
+                    # Fix: Take only the last position from key_states
+                    # key_states shape is typically [batch, heads, seq_len, head_dim]
+                    # We need to slice seq_len dimension to match cache_position
+                    key_states = key_states[:, :, -cache_pos_size:, :]
+                    value_states = value_states[:, :, -cache_pos_size:, :]
+
+                    print(f"✅ Fixed: Sliced key/value_states to last {cache_pos_size} position(s)")
 
             return original_sliding_update(self, key_states, value_states, cache_kwargs)
 
