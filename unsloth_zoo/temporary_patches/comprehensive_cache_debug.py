@@ -65,13 +65,25 @@ def patch_comprehensive_cache_debugging():
             call_count = patch_comprehensive_cache_debugging.call_count
             patch_comprehensive_cache_debugging.call_count += 1
 
+            # Print on EVERY call for first 5 calls to verify wrapper is executing
+            if call_count < 5:
+                print(f"🚨 comprehensive_debug_update called! Call #{call_count}")
+                print(f"   cache_kwargs keys: {list(cache_kwargs.keys())}")
+                if "cache_position" in cache_kwargs:
+                    cp = cache_kwargs["cache_position"]
+                    if cp is not None and hasattr(cp, 'shape'):
+                        print(f"   cache_position shape: {cp.shape}")
+
             # ========================================================================
             # CRITICAL FIX: Check and fix cache_position in cache_kwargs RIGHT NOW!
             # ========================================================================
             if "cache_position" in cache_kwargs and cache_kwargs["cache_position"] is not None:
                 cache_pos = cache_kwargs["cache_position"]
                 if hasattr(cache_pos, 'shape') and len(cache_pos.shape) > 0 and cache_pos.shape[0] > 1:
-                    # CORRUPTED! Fix it immediately (silently - file writes don't work)
+                    # CORRUPTED! Fix it immediately
+                    print(f"🚨🚨🚨 CORRUPTION DETECTED: cache_position has {cache_pos.shape[0]} elements!")
+                    print(f"   Original: {cache_pos}")
+
                     last_pos = cache_pos[-1].item()
                     sliding_window = getattr(self, 'sliding_window', None)
                     if sliding_window is not None and last_pos >= sliding_window:
@@ -81,9 +93,8 @@ def patch_comprehensive_cache_debugging():
                                                                    device=cache_pos.device,
                                                                    dtype=cache_pos.dtype)
 
-                    # Print to stdout so we can see it happened (first few times only)
-                    if call_count < 3:
-                        print(f"🔧 Fixed cache_position corruption: {cache_pos.shape[0]} elements -> 1 (pos={last_pos})")
+                    print(f"   Fixed to: {cache_kwargs['cache_position']}")
+                    print(f"🔧 Fixed cache_position corruption: {cache_pos.shape[0]} elements -> 1 (pos={last_pos})")
 
             # Buffer for all debug output
             debug_buffer = io.StringIO()
@@ -303,6 +314,17 @@ def patch_comprehensive_cache_debugging():
         # Apply the patch
         SlidingWindowLayer.update = comprehensive_debug_update
         print(f"✅ Applied comprehensive cache debugging patch (print-based logging)")
+
+        # VERIFY the patch was applied
+        print(f"🔍 Verifying patch: SlidingWindowLayer.update is now: {SlidingWindowLayer.update}")
+        print(f"🔍 Function name: {SlidingWindowLayer.update.__name__}")
+
+        # Test that it's actually our wrapper
+        if SlidingWindowLayer.update.__name__ == 'comprehensive_debug_update':
+            print(f"✅✅✅ CONFIRMED: SlidingWindowLayer.update has been replaced with our debug wrapper!")
+        else:
+            print(f"❌❌❌ WARNING: SlidingWindowLayer.update was NOT replaced correctly!")
+            print(f"   Expected: 'comprehensive_debug_update', Got: '{SlidingWindowLayer.update.__name__}'")
         
     except Exception as e:
         print(f"❌ Failed to apply comprehensive cache debugging patch: {e}")
