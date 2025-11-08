@@ -934,6 +934,8 @@ def merge_and_overwrite_lora(
     low_disk_space_usage = False,
     use_temp_file        = False,
     cleanup_temp_file    = True,
+    max_shard_size       = "5GB",
+    safe_serialization   = True,
 ):
     # All Unsloth Zoo code licensed under LGPLv3
     # Directly downloads 16bit original weights and merges LoRA
@@ -1122,7 +1124,11 @@ def merge_and_overwrite_lora(
 
         print(f"Unsloth: Saving merged 4bit model to {save_directory}...")
         try:
-            merged_model.save_pretrained(save_directory = save_directory)
+            merged_model.save_pretrained(
+                save_directory = save_directory,
+                max_shard_size = max_shard_size,
+                safe_serialization = safe_serialization,
+            )
             print(f"Unsloth: Merged 4bit model saved.")
         except Exception as e:
              raise RuntimeError(f"Failed to save merged 4-bit model: {e}")
