@@ -99,34 +99,14 @@ pass
 
 # Get Unpack
 # Python 3.10 doesnt have t_Unpack!
+# Use typing_extensions.Unpack directly to avoid circular import with transformers
 try:
     t_Unpack = t.Unpack
 except:
     from typing_extensions import Unpack as t_Unpack
-try:
-    from transformers.processing_utils import Unpack
-    assert \
-        type(Unpack) is type(t_Unpack), \
-        "Unsloth: Unpack type changed! Please file a bug report asap!"
-except ImportError as e:
-    e = str(e)
-    if "cannot import name '_center' from 'numpy._core.umath'" in e:
-        raise RuntimeError(
-            f"***** You might have used uv to install packages, and they broke numpy. Try restarting your runtime. *****"
-        )
-    elif "torchvision::nms does not exist" in e:
-        raise RuntimeError(
-            f"***** Please update and reinstall torchvision - it broke! `pip install --upgrade --force-reinstall --no-cache-dir torchvision` *****"
-        )
-    elif "Unpack" not in e:
-        raise Exception(e)
-    raise RuntimeError(
-        f"Unsloth: Unpack has been moved! Other error = {str(e)}.\n"\
-        "Please file a bug report asap!"
-    )
-except Exception as e:
-    raise Exception(e)
-pass
+
+# Use t_Unpack as Unpack to avoid circular imports with transformers
+Unpack = t_Unpack
 KWARGS_TYPE = t_Unpack[t_TypedDictMeta]
 
 
