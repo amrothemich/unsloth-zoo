@@ -540,7 +540,7 @@ no_combo_fused_torch_compile_options = get_torch_compile_options(
     logging = UNSLOTH_ENABLE_LOGGING,
 )
 
-@_torch_compile(dynamic = None, fullgraph = True, options = fused_torch_compile_options)
+@_torch_compile(dynamic = None, fullgraph = False, options = fused_torch_compile_options)
 def moe_forward_inference(self, hidden_states):
     """Torch compile for forward inference path only with CUDAGraphs"""
     # Router
