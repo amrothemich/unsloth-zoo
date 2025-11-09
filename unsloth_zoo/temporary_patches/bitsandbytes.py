@@ -48,15 +48,6 @@ def patch_bitsandbytes_linear4bit_forward():
     except Exception as e:
         return raise_error("bitsandbytes.Linear4bit", e)
 
-    # Disable compilation for this helper function to allow .data access on Params4bit
-    @torch.compiler.disable
-    def get_transposed_weight(weight):
-        """Helper to access .data on Params4bit and transpose it.
-        This is disabled from torch.compile because accessing .data on Params4bit
-        is not supported by dynamo (causes GetAttrVariable error).
-        """
-        return weight.data.t()
-
     def forward(self, x: torch.Tensor):
         fix_4bit_weight_quant_state_from_module(self)
 
@@ -79,8 +70,9 @@ def patch_bitsandbytes_linear4bit_forward():
         # weight = self.weight.t() if self.weight.dim() == 2 else self.weight
 
         # Cannot do .t() on Params4bit, instead do it on torch.Tensor
-        # Use helper function disabled from compilation to avoid dynamo GetAttrVariable error
-        weight = get_transposed_weight(self.weight)
+        # Inline the transpose to avoid @torch.compiler.disable decorator
+        # This allows fullgraph=True compilation in moe_forward_inference
+        weight = self.weight.data.t()
 
         return bitsandbytes.matmul_4bit(x, weight, bias=bias, quant_state=self.weight.quant_state).to(inp_dtype)
 
