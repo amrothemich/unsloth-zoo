@@ -543,13 +543,6 @@ no_combo_fused_torch_compile_options = get_torch_compile_options(
 @_torch_compile(dynamic = None, fullgraph = False, options = fused_torch_compile_options)
 def moe_forward_inference(self, hidden_states):
     """Torch compile for forward inference path only with CUDAGraphs"""
-    # Memory logging
-    import torch
-    if torch.cuda.is_available():
-        mem_allocated = torch.cuda.memory_allocated() / 1024**3
-        mem_reserved = torch.cuda.memory_reserved() / 1024**3
-        print(f"[MOE_FORWARD] Memory: {mem_allocated:.2f}GB allocated, {mem_reserved:.2f}GB reserved, shape={hidden_states.shape}")
-
     # Router
     router_scores, router_indices = self.router(hidden_states)
     routing_weights = router_scores
