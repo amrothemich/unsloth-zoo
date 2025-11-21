@@ -45,9 +45,13 @@ def patch_compiling_bitsandbytes():
         # Disable dynamo on Linear4bit, Linear8bit and other future modules
         if os.environ.get("UNSLOTH_ENABLE_LOGGING", "0") == "1":
             print("Unsloth: Bitsandbytes < 0.46.0 does not support torch.compile - disabling.")
-        for x in ["bitsandbytes.nn.modules", "peft.tuners.lora.bnb",]:
+        for x in ["bitsandbytes.nn.modules", "peft.tuners.lora.bnb", "unsloth_zoo.temporary_patches.bitsandbytes"]:
             exec(f"import {x}", globals(), locals())
-            layers = dir(eval(x))
+            # Skip the file in Dynamo
+            torch._dynamo.config.skip_files.add(x)
+            try:
+                layers = dir(eval(x))
+            except: continue
             for fx in layers:
                 try: layer = eval(f"{x}.{fx}")
                 except: continue
