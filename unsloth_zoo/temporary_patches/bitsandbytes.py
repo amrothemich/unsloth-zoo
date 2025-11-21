@@ -48,7 +48,6 @@ def patch_bitsandbytes_linear4bit_forward():
     except Exception as e:
         return raise_error("bitsandbytes.Linear4bit", e)
 
-    @torch.compiler.disable
     def forward(self, x: torch.Tensor):
         fix_4bit_weight_quant_state_from_module(self)
 
@@ -69,6 +68,7 @@ def patch_bitsandbytes_linear4bit_forward():
 
         return bitsandbytes.matmul_4bit(x, weight, bias=bias, quant_state=self.weight.quant_state).to(inp_dtype)
 
+    forward = torch._disable_dynamo(forward)
     patch_function(bitsandbytes.nn.modules.Linear4bit, "forward", forward)
     try:
         patch_function(bitsandbytes.nn.Linear4bit, "forward", forward)
