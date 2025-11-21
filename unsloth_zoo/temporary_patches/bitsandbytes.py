@@ -71,5 +71,7 @@ def patch_bitsandbytes_linear4bit_forward():
     
     try:
         patch_function(bitsandbytes.nn.Linear4bit, "forward", forward)
+    except:
+        pass
 pass
 TEMPORARY_PATCHES.append(patch_bitsandbytes_linear4bit_forward)
