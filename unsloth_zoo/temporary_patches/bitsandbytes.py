@@ -68,6 +68,7 @@ def patch_bitsandbytes_linear4bit_forward():
 
         # Cannot do .t() on Params4bit, instead do it on torch.Tensor
         weight = safe_transpose(self.weight)
+        bias = self.bias
 
         return bitsandbytes.matmul_4bit(x, weight, bias=bias, quant_state=self.weight.quant_state).to(inp_dtype)
 
