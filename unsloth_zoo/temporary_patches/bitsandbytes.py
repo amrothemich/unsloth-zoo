@@ -48,6 +48,7 @@ def patch_bitsandbytes_linear4bit_forward():
     except Exception as e:
         return raise_error("bitsandbytes.Linear4bit", e)
 
+    @torch.compiler.disable
     def forward(self, x: torch.Tensor):
         fix_4bit_weight_quant_state_from_module(self)
 
