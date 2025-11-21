@@ -70,8 +70,7 @@ def patch_bitsandbytes_linear4bit_forward():
         # weight = self.weight.t() if self.weight.dim() == 2 else self.weight
 
         # Cannot do .t() on Params4bit, instead do it on torch.Tensor
-        torch._dynamo.graph_break()
-        weight = self.weight.transpose(0, 1)
+        weight = self.weight.as_subclass(torch.Tensor).t()
 
         return bitsandbytes.matmul_4bit(x, weight, bias=bias, quant_state=self.weight.quant_state).to(inp_dtype)
 
