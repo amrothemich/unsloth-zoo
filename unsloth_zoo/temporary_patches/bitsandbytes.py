@@ -48,7 +48,7 @@ def patch_bitsandbytes_linear4bit_forward():
     except Exception as e:
         return raise_error("bitsandbytes.Linear4bit", e)
 
-    @torch.compiler.disable
+    @torch.jit.ignore
     def safe_transpose(w):
         return w.t()
 
