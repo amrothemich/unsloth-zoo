@@ -37,7 +37,8 @@ def patch_compiling_bitsandbytes():
     os.environ["UNSLOTH_PATCHED"] = "1"
 
     import bitsandbytes
-    if Version(bitsandbytes.__version__) >= Version("0.46.0"):
+    # Force disable torch.compile for bitsandbytes to support Params4bit in Lora loading scenarios
+    if False and Version(bitsandbytes.__version__) >= Version("0.46.0"):
         if os.environ.get("UNSLOTH_ENABLE_LOGGING", "0") == "1":
             print("Unsloth: Bitsandbytes >= 0.46.0 supports torch.compile - enabling.")
     else:
