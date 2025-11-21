@@ -37,18 +37,17 @@ def patch_compiling_bitsandbytes():
     os.environ["UNSLOTH_PATCHED"] = "1"
 
     import bitsandbytes
-    # Force disable torch.compile for bitsandbytes to support Params4bit in Lora loading scenarios
-    if False and Version(bitsandbytes.__version__) >= Version("0.46.0"):
+    if Version(bitsandbytes.__version__) >= Version("0.46.0"):
         if os.environ.get("UNSLOTH_ENABLE_LOGGING", "0") == "1":
             print("Unsloth: Bitsandbytes >= 0.46.0 supports torch.compile - enabling.")
     else:
         # Disable dynamo on Linear4bit, Linear8bit and other future modules
         if os.environ.get("UNSLOTH_ENABLE_LOGGING", "0") == "1":
             print("Unsloth: Bitsandbytes < 0.46.0 does not support torch.compile - disabling.")
-        for x in ["bitsandbytes.nn.modules", "peft.tuners.lora.bnb", "unsloth_zoo.temporary_patches.bitsandbytes"]:
+        for x in ["bitsandbytes.nn.modules", "peft.tuners.lora.bnb",]:
             exec(f"import {x}", globals(), locals())
-            # Skip the file in Dynamo - broken in newer torch
-            # torch._dynamo.config.skip_files.add(x)
+            # Skip the file in Dynamo
+            torch._dynamo.config.skip_files.add(x)
             try:
                 layers = dir(eval(x))
             except: continue
