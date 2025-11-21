@@ -48,29 +48,26 @@ def patch_bitsandbytes_linear4bit_forward():
     except Exception as e:
         return raise_error("bitsandbytes.Linear4bit", e)
 
+    @torch.compiler.disable
+    def safe_transpose(w):
+        return w.t()
+
     def forward(self, x: torch.Tensor):
         fix_4bit_weight_quant_state_from_module(self)
 
         # weights are cast automatically as Int8Params, but the bias has to be cast manually
         
-        # ** Errors out in torch.compile so remove it
+        # ** Errors out in torch.compile so remove it **
         # if self.bias is not None and self.bias.dtype != x.dtype:
         #     self.bias.data = self.bias.data.to(x.dtype)
 
-        if not self.compute_type_is_set:
-            self.set_compute_type(x)
-            self.compute_type_is_set = True
-
-        inp_dtype = x.dtype
         if self.compute_dtype is not None:
-            x = x.to(self.compute_dtype)
-
-        bias = None if self.bias is None else self.bias.to(self.compute_dtype)
-        # ** Errors out in torch.compile
-        # weight = self.weight.t() if self.weight.dim() == 2 else self.weight
+            inp_dtype = x.dtype
+            if x.dtype != self.compute_dtype:
+                x = x.to(self.compute_dtype)
 
         # Cannot do .t() on Params4bit, instead do it on torch.Tensor
-        weight = self.weight.as_subclass(torch.Tensor).t()
+        weight = safe_transpose(self.weight)
 
         return bitsandbytes.matmul_4bit(x, weight, bias=bias, quant_state=self.weight.quant_state).to(inp_dtype)
 
