@@ -78,4 +78,4 @@ def patch_bitsandbytes_linear4bit_forward():
     except:
         pass
 pass
-# TEMPORARY_PATCHES.append(patch_bitsandbytes_linear4bit_forward)
+TEMPORARY_PATCHES.append(patch_bitsandbytes_linear4bit_forward)
