@@ -48,10 +48,6 @@ def patch_bitsandbytes_linear4bit_forward():
     except Exception as e:
         return raise_error("bitsandbytes.Linear4bit", e)
 
-    @torch.jit.ignore
-    def safe_transpose(w):
-        return w.t()
-
     def forward(self, x: torch.Tensor):
         fix_4bit_weight_quant_state_from_module(self)
 
@@ -67,7 +63,7 @@ def patch_bitsandbytes_linear4bit_forward():
                 x = x.to(self.compute_dtype)
 
         # Cannot do .t() on Params4bit, instead do it on torch.Tensor
-        weight = safe_transpose(self.weight)
+        weight = self.weight.t()
         bias = self.bias
 
         return bitsandbytes.matmul_4bit(x, weight, bias=bias, quant_state=self.weight.quant_state).to(inp_dtype)
