@@ -47,8 +47,8 @@ def patch_compiling_bitsandbytes():
             print("Unsloth: Bitsandbytes < 0.46.0 does not support torch.compile - disabling.")
         for x in ["bitsandbytes.nn.modules", "peft.tuners.lora.bnb", "unsloth_zoo.temporary_patches.bitsandbytes"]:
             exec(f"import {x}", globals(), locals())
-            # Skip the file in Dynamo
-            torch._dynamo.config.skip_files.add(x)
+            # Skip the file in Dynamo - broken in newer torch
+            # torch._dynamo.config.skip_files.add(x)
             try:
                 layers = dir(eval(x))
             except: continue
