@@ -536,6 +536,8 @@ def create_new_function(
     imports += "import torch.nn as nn\n"
     imports += "from torch.nn import functional as F\n"
     imports += "from typing import Any, List, Optional, Tuple, Union, Dict, Set, Callable\n"
+    if "VARIANT_KWARG_KEYS" in new_source:
+        imports += "try: from peft.utils.other import VARIANT_KWARG_KEYS\nexcept: pass\n"
     imports += f"from {model_location} import (" + ", ".join(x for x in items) + ")" if len(items) != 0 else ""
     new_source = imports + "\n\n" + new_source
     # Check logger and remove use_cache
