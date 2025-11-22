@@ -537,7 +537,7 @@ def create_new_function(
     imports += "from torch.nn import functional as F\n"
     imports += "from typing import Any, List, Optional, Tuple, Union, Dict, Set, Callable\n"
     if "VARIANT_KWARG_KEYS" in new_source:
-        imports += "try: from peft.utils.other import VARIANT_KWARG_KEYS\nexcept: pass\n"
+        imports += "try: from peft.utils.other import VARIANT_KWARG_KEYS\nexcept: VARIANT_KWARG_KEYS = []\n"
     imports += f"from {model_location} import (" + ", ".join(x for x in items) + ")" if len(items) != 0 else ""
     new_source = imports + "\n\n" + new_source
     # Check logger and remove use_cache
@@ -1708,6 +1708,14 @@ def patch_lora_forwards(torch_compile_options):
             1,
         )
 
+        # Remove variant_kwargs = {k: kwargs.pop(k, None) for k in VARIANT_KWARG_KEYS}
+        # No need for alora for now
+        # variant_kwarg_keys = "variant_kwargs = {k: kwargs.pop(k, None) for k in VARIANT_KWARG_KEYS}"
+        # variant_found = source.find(variant_kwarg_keys)
+        # if variant_found != -1:
+        #     variant_end = source.find("\n", variant_found + len(variant_kwarg_keys))
+        #     source = source.replace(source[variant_found : variant_end], "")
+        source = re.sub(r"variant_kwargs\s*=\s*\{[^\}]{0,}\}", "", source)
         # Check failed upcasting
         replacements = [
             "x = x.to(lora_A.weight.dtype)",
