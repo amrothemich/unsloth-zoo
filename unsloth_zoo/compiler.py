@@ -1741,7 +1741,8 @@ def patch_lora_forwards(torch_compile_options):
                 parent,
                 dir(eval(parent)),
                 prepend = \
-                    f"\ntorch_compile_options = {torch_compile_options}\n"
+                    f"\ntorch_compile_options = {torch_compile_options}\n" \
+                    f"try:\n    from peft.tuners.lora.layer import VARIANT_KWARG_KEYS\nexcept:\n    VARIANT_KWARG_KEYS=['adapter_names']\n"
             ).unsloth_forward
             exec(f"{parent}.{child}.forward = forward", globals(), locals())
         else:
