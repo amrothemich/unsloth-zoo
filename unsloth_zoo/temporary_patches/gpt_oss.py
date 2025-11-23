@@ -472,46 +472,29 @@ class GptOssExperts(nn.Module):
         batch_size = hidden_states.shape[0]
         hidden_states = hidden_states.reshape(-1, self.hidden_size)
         num_experts = routing_weights.shape[1]
-        if self.training:
-            next_states = torch.zeros_like(hidden_states, dtype=torch.float32, device=hidden_states.device)
-            # with torch.no_grad():
-                # expert_mask = torch.nn.functional.one_hot(router_indices, num_classes=num_experts)
-                # expert_mask = expert_mask.permute(2, 1, 0)
-                # expert_hitted = torch.greater(expert_mask.sum(dim=(-1, -2)), 0).nonzero()
-            # for expert_idx in expert_hitted[:]:
-            for expert_idx in range(num_experts):
-                with torch.no_grad():
-                    # _, token_idx = torch.where(expert_mask[expert_idx[0]])
-                    token_idx, _ = torch.where(router_indices == expert_idx)
-                current_state = hidden_states[token_idx]
-                gate_up = self.gate_up_projs[expert_idx](current_state)
-                gated_output = swiglu_torch_forward(gate_up, self.alpha, self.limit)
-                # gate, up = gate_up[..., ::2], gate_up[..., 1::2]
-                # gate = gate.clamp(min=None, max=self.limit)
-                # up = up.clamp(min=-self.limit, max=self.limit)
-                # glu = gate * torch.sigmoid(gate * self.alpha)
-                # gated_output = (up + 1) * glu
-                out = self.down_projs[expert_idx](gated_output)
-                weighted_output = out * routing_weights[token_idx, expert_idx, None].to(torch.float32)
-                next_states.index_add_(0, token_idx, weighted_output)
-            next_states = next_states.view(batch_size, -1, self.hidden_size)
-            return next_states.to(hidden_states.dtype)
-        else:
-            X_rep = hidden_states.unsqueeze(0).expand(num_experts, -1, -1)
-            gate_up_list = [up_l(X_rep[e]) for e, up_l in enumerate(self.gate_up_projs)]
-            gate_up = torch.stack(gate_up_list, dim=0)
-            fused = swiglu_torch_forward(gate_up, self.alpha, self.limit, dtype = X_rep.dtype)
-            # gate = gate_up[..., ::2]
-            # up_h = gate_up[..., 1::2]
-            # gate = gate.clamp(max=self.limit)
-            # up_h = up_h.clamp(min=-self.limit, max=self.limit)
+        next_states = torch.zeros_like(hidden_states, dtype=torch.float32, device=hidden_states.device)
+        # with torch.no_grad():
+            # expert_mask = torch.nn.functional.one_hot(router_indices, num_classes=num_experts)
+            # expert_mask = expert_mask.permute(2, 1, 0)
+            # expert_hitted = torch.greater(expert_mask.sum(dim=(-1, -2)), 0).nonzero()
+        # for expert_idx in expert_hitted[:]:
+        for expert_idx in range(num_experts):
+            with torch.no_grad():
+                # _, token_idx = torch.where(expert_mask[expert_idx[0]])
+                token_idx, _ = torch.where(router_indices == expert_idx)
+            current_state = hidden_states[token_idx]
+            gate_up = self.gate_up_projs[expert_idx](current_state)
+            gated_output = swiglu_torch_forward(gate_up, self.alpha, self.limit)
+            # gate, up = gate_up[..., ::2], gate_up[..., 1::2]
+            # gate = gate.clamp(min=None, max=self.limit)
+            # up = up.clamp(min=-self.limit, max=self.limit)
             # glu = gate * torch.sigmoid(gate * self.alpha)
-            # fused = (up_h + 1) * glu
-            out_list = [down_l(fused[e]) for e, down_l in enumerate(self.down_projs)]
-            outs = torch.stack(out_list, dim=0)
-            rw = routing_weights.transpose(0, 1).unsqueeze(-1)
-            mixed = (outs.to(torch.float32) * rw.to(torch.float32)).sum(dim=0)
-            return mixed.view(batch_size, -1, self.hidden_size).to(hidden_states.dtype)
+            # gated_output = (up + 1) * glu
+            out = self.down_projs[expert_idx](gated_output)
+            weighted_output = out * routing_weights[token_idx, expert_idx, None].to(torch.float32)
+            next_states.index_add_(0, token_idx, weighted_output)
+        next_states = next_states.view(batch_size, -1, self.hidden_size)
+        return next_states.to(hidden_states.dtype)
 pass
 
 class GptOssTopKRouter(nn.Module):
@@ -669,60 +652,35 @@ def patch_gpt_oss_linearized():
             batch_size = hidden_states.shape[0]
             hidden_states = hidden_states.reshape(-1, self.hidden_size)
             num_experts = routing_weights.shape[1]
-            if self.training:
-                next_states = torch.zeros_like(hidden_states, dtype=torch.float32, device=hidden_states.device)
-                # with torch.no_grad():
-                #     expert_mask = torch.nn.functional.one_hot(router_indices, num_classes=num_experts)
-                #     expert_mask = expert_mask.permute(2, 1, 0)
-                #     expert_hitted = torch.greater(expert_mask.sum(dim=(-1, -2)), 0).nonzero()
-                # for expert_idx in expert_hitted[:]:
-                for expert_idx in range(num_experts):
-                    with torch.no_grad():
-                        # _, token_idx = torch.where(expert_mask[expert_idx[0]])
-                        token_idx, _ = torch.where(router_indices == expert_idx)
-                    current_state = hidden_states[token_idx]
-                    gate_up = self.gate_up_projs[expert_idx](current_state)
-                    down_proj = self.down_projs[expert_idx]
-                    gated_output = swiglu_torch_forward(gate_up, self.alpha, self.limit, dtype = torch.float32)
-                    # gate, up = gate_up[..., ::2], gate_up[..., 1::2]
-                    # gate = gate.clamp(min=None, max=self.limit)
-                    # up = up.clamp(min=-self.limit, max=self.limit)
-                    # glu = gate * torch.sigmoid(gate * self.alpha)
-                    # gated_output = (up + 1) * glu
-
-                    # Force float32 matrix multiply on some down projection modules
-                    gated_output = gated_output.to(torch.float32)
-                    device_type = gated_output.device.type if isinstance(gated_output.device.type, str) and gated_output.device.type != "mps" else "cpu"
-                    with torch.autocast(device_type=device_type, enabled=False): # Force float32
-                        out = down_proj(gated_output)
-                    weighted_output = out.to(torch.float32) * routing_weights[token_idx, expert_idx, None].to(torch.float32)
-                    next_states.index_add_(0, token_idx, weighted_output)
-                next_states = next_states.view(batch_size, -1, self.hidden_size)
-                return next_states.to(torch.float32)
-            else:
-                X_rep = hidden_states.unsqueeze(0).expand(num_experts, -1, -1)
-                gate_up_list = [up_l(X_rep[e]) for e, up_l in enumerate(self.gate_up_projs)]
-                gate_up = torch.stack(gate_up_list, dim=0)
-                dtype = torch.float32 if hidden_states.dtype != torch.bfloat16 else hidden_states.dtype
-                fused = swiglu_torch_forward(gate_up, self.alpha, self.limit, dtype = dtype)
-                # gate = gate_up[..., ::2]
-                # up_h = gate_up[..., 1::2]
-                # gate = gate.clamp(max=self.limit)
-                # up_h = up_h.clamp(min=-self.limit, max=self.limit)
+            next_states = torch.zeros_like(hidden_states, dtype=torch.float32, device=hidden_states.device)
+            # with torch.no_grad():
+            #     expert_mask = torch.nn.functional.one_hot(router_indices, num_classes=num_experts)
+            #     expert_mask = expert_mask.permute(2, 1, 0)
+            #     expert_hitted = torch.greater(expert_mask.sum(dim=(-1, -2)), 0).nonzero()
+            # for expert_idx in expert_hitted[:]:
+            for expert_idx in range(num_experts):
+                with torch.no_grad():
+                    # _, token_idx = torch.where(expert_mask[expert_idx[0]])
+                    token_idx, _ = torch.where(router_indices == expert_idx)
+                current_state = hidden_states[token_idx]
+                gate_up = self.gate_up_projs[expert_idx](current_state)
+                down_proj = self.down_projs[expert_idx]
+                gated_output = swiglu_torch_forward(gate_up, self.alpha, self.limit, dtype = torch.float32)
+                # gate, up = gate_up[..., ::2], gate_up[..., 1::2]
+                # gate = gate.clamp(min=None, max=self.limit)
+                # up = up.clamp(min=-self.limit, max=self.limit)
                 # glu = gate * torch.sigmoid(gate * self.alpha)
-                # fused = (up_h + 1) * glu
+                # gated_output = (up + 1) * glu
 
-                # Force float32 matrix multiply on down projection only
-                device_type = fused.device.type if isinstance(fused.device.type, str) and fused.device.type != "mps" else "cpu"
+                # Force float32 matrix multiply on some down projection modules
+                gated_output = gated_output.to(torch.float32)
+                device_type = gated_output.device.type if isinstance(gated_output.device.type, str) and gated_output.device.type != "mps" else "cpu"
                 with torch.autocast(device_type=device_type, enabled=False): # Force float32
-                    out_list = [
-                        down_l(fused[e].to(dtype))
-                        for e, down_l in enumerate(self.down_projs)
-                    ]
-                outs = torch.stack(out_list, dim=0)
-                rw = routing_weights.transpose(0, 1).unsqueeze(-1)
-                mixed = (outs.to(dtype) * rw.to(dtype)).sum(dim=0)
-                return mixed.view(batch_size, -1, self.hidden_size).to(hidden_states.dtype)
+                    out = down_proj(gated_output)
+                weighted_output = out.to(torch.float32) * routing_weights[token_idx, expert_idx, None].to(torch.float32)
+                next_states.index_add_(0, token_idx, weighted_output)
+            next_states = next_states.view(batch_size, -1, self.hidden_size)
+            return next_states.to(torch.float32)
             pass
         pass
         GptOssExperts.forward = forward
