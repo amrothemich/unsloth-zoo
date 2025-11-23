@@ -759,7 +759,10 @@ def patch_GptOssAttention():
         # This was not in the original implementation and slightly affect results; it prevents overflow in BF16/FP16
         # when training with bsz>1 we clamp max values.
         # combined_logits = combined_logits - combined_logits.max(dim=-1, keepdim=True).values
-        combined_logits[:] = F_softmax(combined_logits, dim=-1, dtype=torch.float32)
+        # combined_logits[:] = F_softmax(combined_logits, dim=-1, dtype=torch.float32)
+        # Chunked softmax to avoid OOM
+        for i in range(0, combined_logits.shape[1], 1):
+            combined_logits[:, i:i+1] = F_softmax(combined_logits[:, i:i+1], dim=-1, dtype=torch.float32)
         probs = combined_logits
         scores = probs[..., :-1]  # we drop the sink here
         attn_weights = F_dropout(scores, p=dropout, training=module.training, inplace=True)
@@ -792,7 +795,10 @@ def patch_GptOssAttention():
         # This was not in the original implementation and slightly affect results; it prevents overflow in BF16/FP16
         # when training with bsz>1 we clamp max values.
         # combined_logits = combined_logits - combined_logits.max(dim=-1, keepdim=True).values
-        combined_logits[:] = F_softmax(combined_logits, dim=-1, dtype=torch.float32)
+        # combined_logits[:] = F_softmax(combined_logits, dim=-1, dtype=torch.float32)
+        # Chunked softmax to avoid OOM
+        for i in range(0, combined_logits.shape[1], 1):
+            combined_logits[:, i:i+1] = F_softmax(combined_logits[:, i:i+1], dim=-1, dtype=torch.float32)
         probs = combined_logits
         scores = probs[..., :-1]  # we drop the sink here
         attn_weights = F_dropout(scores, p=dropout, training=module.training, inplace=True)
