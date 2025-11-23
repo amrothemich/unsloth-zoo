@@ -858,29 +858,29 @@ def patch_GptOssAttention():
         #         has_static_cache = has_static_cache,
         #     )
         # attn_weights = None
-        if self.training:
-            attn_output = flex_attention_with_sink(
-                self,
-                query_states,
-                key_states,
-                value_states,
-            )
-            attn_weights = None
-        else:
-            # Weirdly for inference, flex attention returns gibberish
-            # Most likely due to left padding
-            attn_output, attn_weights = eager_attention_forward(
-                self,
-                query_states,
-                key_states,
-                value_states,
-                attention_mask,
-                dropout=0.0 if not self.training else self.attention_dropout,
-                scaling=self.scaling,
-                sliding_window=self.sliding_window,
-                s_aux=self.sinks,  # diff with Llama
-                **kwargs,
-            )
+        # if self.training:
+        attn_output = flex_attention_with_sink(
+            self,
+            query_states,
+            key_states,
+            value_states,
+        )
+        attn_weights = None
+        # else:
+        #     # Weirdly for inference, flex attention returns gibberish
+        #     # Most likely due to left padding
+        #     attn_output, attn_weights = eager_attention_forward(
+        #         self,
+        #         query_states,
+        #         key_states,
+        #         value_states,
+        #         attention_mask,
+        #         dropout=0.0 if not self.training else self.attention_dropout,
+        #         scaling=self.scaling,
+        #         sliding_window=self.sliding_window,
+        #         s_aux=self.sinks,  # diff with Llama
+        #         **kwargs,
+        #     )
         attn_output = attn_output.reshape(*input_shape, -1).contiguous()
         attn_output = self.o_proj(attn_output)
         return attn_output, attn_weights
