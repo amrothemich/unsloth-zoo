@@ -601,18 +601,34 @@ def moe_forward_inference_bf16(self, hidden_states):
     batch_size = hidden_states.shape[0]
     hidden_states = hidden_states.reshape(-1, moe.hidden_size)
     num_experts = routing_weights.shape[1]
-    hidden_states = hidden_states.repeat(num_experts, 1)
-    hidden_states = hidden_states.view(num_experts, -1, moe.hidden_size)
-    gate_up = torch.bmm(hidden_states, moe.gate_up_proj) + moe.gate_up_proj_bias[..., None, :]
-    gate, up = gate_up[..., ::2], gate_up[..., 1::2]
-    gate = gate.clamp(min=None, max=moe.limit)
-    up = up.clamp(min=-moe.limit, max=moe.limit)
-    glu = gate * torch.sigmoid(gate.to(torch.float32) * moe.alpha).to(gate.dtype)
-    next_states = torch.bmm(((up + 1) * glu), moe.down_proj)
-    next_states = next_states + moe.down_proj_bias[..., None, :]
-    next_states = next_states.view(num_experts, batch_size, -1, moe.hidden_size)
-    next_states = next_states * routing_weights.transpose(0, 1).view(num_experts, batch_size, -1)[..., None]
-    next_states = next_states.sum(dim=0)
+    
+    next_states = torch.zeros_like(hidden_states, dtype=torch.float32, device=hidden_states.device)
+    for expert_idx in range(num_experts):
+        # We use non-blocking ops where possible or just standard masking since we are in a loop
+        # Ideally we'd use index_select but mask is easier for JIT
+        token_idx, _ = torch.where(router_indices == expert_idx)
+        
+        # Only compute if tokens are assigned to this expert
+        # But for torch.compile static graph we might need to compute all? 
+        # Actually dynamic shapes are supported so this branching is fine-ish,
+        # but for fullgraph=True it might unroll. 
+        # Let's stick to masking or index_add which is robust.
+        
+        current_state = hidden_states[token_idx]
+        # To avoid empty tensor issues in some kernels, we can check size
+        if current_state.shape[0] > 0:
+            gate_up = torch.nn.functional.linear(current_state, moe.gate_up_proj.weight[expert_idx], moe.gate_up_proj.bias[expert_idx])
+            
+            gate, up = gate_up[..., ::2], gate_up[..., 1::2]
+            gate = gate.clamp(min=None, max=moe.limit)
+            up = up.clamp(min=-moe.limit, max=moe.limit)
+            glu = gate * torch.sigmoid(gate.to(torch.float32) * moe.alpha).to(gate.dtype)
+            gated_output = (up + 1) * glu
+            
+            out = torch.nn.functional.linear(gated_output, moe.down_proj.weight[expert_idx], moe.down_proj.bias[expert_idx])
+            weighted_output = out * routing_weights[token_idx, expert_idx, None].to(out.dtype)
+            next_states.index_add_(0, token_idx, weighted_output.to(torch.float32))
+            
     return next_states
 pass
 
