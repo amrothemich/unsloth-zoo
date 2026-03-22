@@ -482,6 +482,33 @@ def higher_precision_layernorms(modeling_file):
 pass
 
 
+def fix_mrope_apply_rotary_pos_emb(source):
+    """
+    Fix apply_rotary_pos_emb for models that use 3D multimodal RoPE (M-RoPE), e.g.
+    Qwen3_5ForConditionalGeneration.  Their rotary embedding returns cos/sin shaped
+    [3, batch, seq, head_dim] (one slice per spatial dimension: temporal/height/width).
+    The standard apply_rotary_pos_emb expects [batch, seq, head_dim] and crashes on
+    the final torch.cat because q_embed ends up with a 0-size non-cat dimension.
+
+    For text-only inputs all three M-RoPE slices carry identical sequential positions
+    (cos[0] == cos[1] == cos[2]), so taking the first slice is mathematically exact.
+    """
+    if "apply_rotary_pos_emb" not in source:
+        return source
+
+    pattern = re.compile(
+        r"(def apply_rotary_pos_emb\(q,\s*k,\s*cos,\s*sin[^)]*\):)\n([ \t]*)(cos\s*=\s*cos\.unsqueeze)"
+    )
+    replacement = (
+        r"\1\n"
+        r"\2# Unsloth: handle 3D M-RoPE (e.g. Qwen3.5): cos/sin may be [3, bs, seq, d]\n"
+        r"\2if cos.dim() == 4 and cos.shape[0] == 3: cos, sin = cos[0], sin[0]\n"
+        r"\2\3"
+    )
+    return pattern.sub(replacement, source)
+pass
+
+
 disble_use_cache_logging = """
 if hasattr(logger, "addFilter"):
     import logging
@@ -829,6 +856,9 @@ def create_standalone_class(
 
     # Fix RotaryEmbeddings being in the wrong precision
     source = fix_rotary_embedding_dtype(source)
+
+    # Fix apply_rotary_pos_emb for 3D M-RoPE models (e.g. Qwen3.5 VL architecture)
+    source = fix_mrope_apply_rotary_pos_emb(source)
 
     return source
 pass
